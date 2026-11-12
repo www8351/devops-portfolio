@@ -15,8 +15,8 @@ The build run, steps 0 to 7, is finished. Every step is in ACTIONS with its time
 ### Next action
 
 ```
-Issue:  The work is on branch worktree-step-1-app and is not on main yet. Nothing was pushed.
-Action: The owner merges. From the main checkout: git merge -X theirs worktree-step-1-app. The entry on main below says why it is not a fast forward and which commands were tested.
+Issue:  The work is on branch worktree-step-1-app and is not on main yet. The branch is on origin since 2026-11-12 12:55, pushed on the owner's instruction. main was not pushed and nothing was merged.
+Action: The owner merges. Locally, from the main checkout: git merge -X theirs worktree-step-1-app, then git push origin main. Or on GitHub: a pull request from the branch, where the one conflict in .gitignore is resolved by taking the branch version. The entry on main below says why it is not a fast forward and which commands were tested.
 Status: OPEN
 ```
 
@@ -53,8 +53,8 @@ Status: OPEN
 ```
 
 ```
-Issue:  The CI workflow has never run on GitHub. Not exercised anywhere: docker login to ghcr.io, docker push, action download, the pip cache, and the first package creation on GHCR.
-Action: The first push of main to GitHub is the first real run. The owner watches that run and the Packages page. This goes in the final report.
+Issue:  The CI workflow has never run on GitHub. Not exercised anywhere: docker login to ghcr.io, docker push, action download, the pip cache, and the first package creation on GHCR. The push of the branch did not start it, because it triggers only on a push to main and on pull requests.
+Action: A pull request from the branch is the first real run of lint, test and build, without login and push. The first push of main is the first run that also pushes an image. The owner watches that run and the Packages page.
 Status: OPEN
 ```
 
@@ -77,8 +77,8 @@ Status: OPEN
 ```
 
 ```
-Issue:  This file is tracked and becomes public with the first push of main. It describes how the build was run and checked, next to readme files written in the first person.
-Action: Owner decides before the first push whether it stays tracked.
+Issue:  This file is tracked. It is on origin in the branch worktree-step-1-app since the push and reaches main with the merge. It describes how the build was run and checked, next to readme files written in the first person.
+Action: Owner decides before the merge whether it stays tracked.
 Status: OPEN
 ```
 
@@ -95,6 +95,14 @@ Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Branch pushed to origin
+
+```
+Issue:  The owner asked for a push after the final report. Until then the limits of the build run forbade any push.
+Action: Pushed branch worktree-step-1-app to origin at 12:55 (+0200) with git push -u origin worktree-step-1-app, head 1ed8af4. Before the push the tracked files were searched for personal data and secrets, nothing found. main was not pushed and nothing was merged. origin/main stays at a9cbb5a. The workflow did not run.
+Status: DONE
+```
 
 ### 2026-11-12 Final review and fix wave
 
