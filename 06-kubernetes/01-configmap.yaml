@@ -1,0 +1,11 @@
+# The version the app reports on /version. The Deployment reads it as an
+# environment variable, so a new value needs a restart, not a new image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portfolio-app
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-app
+data:
+  APP_VERSION: "0.1.0"

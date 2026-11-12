@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-app
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-app
+spec:
+  # Two pods, so one can die or be replaced while the other keeps answering.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: portfolio-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # A new pod has to be ready before an old one stops.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portfolio-app
+    spec:
+      # The app never talks to the Kubernetes API, so it gets no token.
+      automountServiceAccountToken: false
+      securityContext:
+        # The image runs as 10001:10001. A numeric user lets the kubelet
+        # check runAsNonRoot before the container starts.
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          # Imported into the cluster from the local image store, not pulled.
+          image: portfolio-app:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: portfolio-app
+          # Kubernetes ignores the HEALTHCHECK in the image. These probes do
+          # that job. Readiness takes a pod out of the Service, liveness
+          # restarts the container.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Requests are what the scheduler reserves. Limits are the ceiling.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          # The app writes nothing to disk and needs no Linux capabilities.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

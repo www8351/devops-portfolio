@@ -1,0 +1,17 @@
+# One stable address in front of both pods. ClusterIP is reachable only
+# inside the cluster, or from outside through kubectl port-forward.
+apiVersion: v1
+kind: Service
+metadata:
+  name: portfolio-app
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-app
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: portfolio-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

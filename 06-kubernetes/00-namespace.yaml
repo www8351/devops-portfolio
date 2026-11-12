@@ -1,0 +1,9 @@
+# The app gets a namespace of its own.
+# The restricted Pod Security level makes the API server itself reject
+# any pod here that could run as root, keep capabilities or escalate.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portfolio
+  labels:
+    pod-security.kubernetes.io/enforce: restricted

@@ -49,3 +49,6 @@ crash.log
 
 # Ansible
 05-ansible/inventory.ini
+
+# Kubernetes
+06-kubernetes/.kubeconfig
