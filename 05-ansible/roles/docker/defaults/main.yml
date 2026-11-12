@@ -1,0 +1,10 @@
+---
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+
+# The Docker repository uses the Debian names for CPU architectures.
+docker_apt_arch:
+  x86_64: amd64
+  aarch64: arm64

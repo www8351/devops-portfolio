@@ -1,0 +1,8 @@
+---
+- name: Prepare the server and run the app
+  hosts: app
+  become: true
+  roles:
+    - base
+    - docker
+    - app

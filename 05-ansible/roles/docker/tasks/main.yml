@@ -1,0 +1,30 @@
+---
+- name: Add the Docker apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris: https://download.docker.com/linux/ubuntu
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: stable
+    architectures: "{{ docker_apt_arch[ansible_facts['architecture']] }}"
+    signed_by: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  notify: Refresh the apt cache
+
+- name: Read the new Docker repository index before the install
+  ansible.builtin.meta: flush_handlers
+
+# The engine needs a privileged container to run, and systemd is not running
+# in a plain container.
+- name: Install the Docker engine
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+  tags: [host_only]
+
+- name: Enable and start the Docker service
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  tags: [host_only]

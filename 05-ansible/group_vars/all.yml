@@ -1,0 +1,8 @@
+---
+app_port: 8000
+app_user: appuser
+app_container_name: portfolio-app
+app_image_repo: ghcr.io/www8351/devops-portfolio
+# app_image_tag has no default. CI tags the image with the commit SHA,
+# so it comes from the command line: -e app_image_tag=<commit sha>
+app_image: "{{ app_image_repo }}:{{ app_image_tag }}"

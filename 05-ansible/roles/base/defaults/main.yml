@@ -1,0 +1,12 @@
+---
+# python3-debian is for the Docker repository task, python3-requests for the
+# community.docker modules.
+base_packages:
+  - ca-certificates
+  - curl
+  - python3-debian
+  - python3-requests
+  - ufw
+
+# The same uid and gid as the account inside the app image (02-docker/Dockerfile).
+base_user_id: 10001

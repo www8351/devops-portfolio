@@ -1,0 +1,35 @@
+---
+# Every task here needs a running Docker engine and a pushed image.
+- name: Check that an image tag was given
+  ansible.builtin.assert:
+    that:
+      - app_image_tag is defined
+      - app_image_tag | string | length > 0
+    fail_msg: "Set app_image_tag, for example -e app_image_tag=<commit sha>"
+    quiet: true
+  tags: [host_only]
+
+- name: Run the app container
+  community.docker.docker_container:
+    name: "{{ app_container_name }}"
+    image: "{{ app_image }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ app_port }}:8000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opts:
+      - no-new-privileges
+  tags: [host_only]
+
+- name: Wait until /health answers
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ app_port }}/health"
+    status_code: 200
+  register: app_health
+  until: app_health.status == 200
+  retries: 30
+  delay: 2
+  tags: [host_only]

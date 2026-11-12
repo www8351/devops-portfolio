@@ -46,3 +46,6 @@ CLAUDE.md.bak*
 *.tfvars
 *.tfvars.json
 crash.log
+
+# Ansible
+05-ansible/inventory.ini
