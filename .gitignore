@@ -35,3 +35,6 @@ CLAUDE.md.bak*
 
 # Local scratch
 .tmp/
+
+# Ruff cache
+.ruff_cache/
