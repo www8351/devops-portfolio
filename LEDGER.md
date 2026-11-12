@@ -12,11 +12,11 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 7. 06-kubernetes/ and the final root README
+### Final review of the whole branch
 
 ```
-Issue:  Step 7. Build Namespace, ConfigMap for APP_VERSION, Deployment (2 replicas, readiness and liveness probes on /health, resource requests and limits, non-root security context), Service. Folder readme per the readme rules. Then rewrite the root README: what the repo is, a table of the folders with one line each, a Mermaid diagram of the path from code to running container, how to run each folder.
-Action: Gate: manifests validate. On a local cluster: import the image, apply, rollout completes, /health answers through a port-forward, delete one pod and confirm it is replaced. Delete the cluster afterwards. If no local cluster tool is available: validate only, and say so. Started 2026-11-12 09:05 (+0200). k3d 5.9.0 was installed with winget at 08:44 for this step.
+Issue:  All seven build steps passed their gates. Still open before the run ends: one review of the whole branch, one fix wave for its findings and for the deferred review notes below, one scoped second review, and a rerun of the gate of every folder the fix wave touches.
+Action: Started 2026-11-12 09:50 (+0200). Carried in from the step 7 review: a rolling restart loses a few requests (about 4 of 750 in the review probe) because the pod has no preStop wait, and the Kubernetes readme reads smoother than that. Resume here if the run stops: read the deferred notes, apply the fixes, rerun the gates.
 Status: IN PROGRESS
 ```
 
@@ -55,6 +55,18 @@ Status: OPEN
 ```
 Issue:  The CI workflow has never run on GitHub. Not exercised anywhere: docker login to ghcr.io, docker push, action download, the pip cache, and the first package creation on GHCR.
 Action: The first push of main to GitHub is the first real run. The owner watches that run and the Packages page. This goes in the final report.
+Status: OPEN
+```
+
+```
+Issue:  k3d created an empty folder outside the repo, C:\Users\<user>\.config\k3d, when it wrote the kubeconfig file (09:11). Nothing else was written to the home folder. The default kubeconfig was never touched.
+Action: Left in place, because k3d creates it again on the next run. The owner can remove it with: Remove-Item "$HOME\.config\k3d". This goes in the final report.
+Status: OPEN
+```
+
+```
+Issue:  Review notes deferred from step 7, all minor: the diagram edge from the registry to Terraform reads wrong, the cluster create time in the readme is a first run with image pulls, two readme claims have no command a reader can repeat, the namespace sets only the enforce label, the pods have no spread rule.
+Action: Triage in the final review of the whole branch. None of them breaks the gate.
 Status: OPEN
 ```
 
@@ -101,6 +113,45 @@ Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 7. 06-kubernetes/ and the root README
+
+```
+Issue:  Step 7. 06-kubernetes/ and the final root README. Start 09:05, end 09:47 (+0200).
+Action: Built four manifests (Namespace with the restricted Pod Security level, ConfigMap, Deployment with 2 replicas, probes, resources and a locked down security context, Service), the folder readme, and the rewritten root README (folder table, Mermaid diagram, run commands per folder). The owner's H1 lines and opening sentences in the root README are byte identical to before. A separate review found the spec met, reran every gate on a fresh cluster and raised one finding that is carried into the final fix wave (see ISSUES). Versions: k3d 5.9.0, k3s v1.35.5+k3s1, kubectl 1.36.1, ghcr.io/yannh/kubeconform:v0.8.0, minlag/mermaid-cli:12.0.1. Commits 919c7b7, 854ff1b, 78cba5b.
+Status: DONE
+```
+
+Gate evidence, code at 78cba5b, local k3d cluster named portfolio:
+
+```
+$ docker run --rm -v "${PWD}/06-kubernetes:/manifests:ro" ghcr.io/yannh/kubeconform:v0.8.0 -strict -summary /manifests
+Summary: 4 resources found in 4 files - Valid: 4, Invalid: 0, Errors: 0, Skipped: 0
+$ k3d cluster create portfolio --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait --timeout 300s
+$ k3d kubeconfig write portfolio --output 06-kubernetes/.kubeconfig
+$ kubectl --kubeconfig 06-kubernetes/.kubeconfig get nodes
+k3d-portfolio-server-0   Ready   control-plane   v1.35.5+k3s1
+$ k3d image import portfolio-app:0.1.0 -c portfolio
+Successfully imported 1 image(s) into 1 cluster(s)
+$ kubectl --kubeconfig 06-kubernetes/.kubeconfig apply -f 06-kubernetes/
+namespace/portfolio created
+configmap/portfolio-app created
+deployment.apps/portfolio-app created
+service/portfolio-app created
+$ kubectl --kubeconfig 06-kubernetes/.kubeconfig -n portfolio rollout status deployment/portfolio-app --timeout=180s
+deployment "portfolio-app" successfully rolled out
+$ kubectl ... -n portfolio port-forward svc/portfolio-app 8080:80      then curl
+{"status":"ok"} [http 200]      {"version":"0.1.0"} [http 200]
+$ kubectl ... -n portfolio delete pod/portfolio-app-5747cdbcc9-w6twp
+before: w6twp, zwcz4      after: khphw (new), zwcz4      both 1/1 Running
+$ kubectl ... -n portfolio exec deploy/portfolio-app -- id
+uid=10001(appuser) gid=10001(appuser) groups=10001(appuser)
+$ kubectl ... -n portfolio run pf-probe --image=portfolio-app:0.1.0 --restart=Never --overrides=(runAsUser 0)
+Error from server (Forbidden): pods "pf-probe" is forbidden: violates PodSecurity "restricted:latest"
+$ k3d cluster delete portfolio
+clusters left: 0      k3d containers left: 0      kubeconfig file removed
+Mermaid block: rendered by minlag/mermaid-cli:12.0.1 with exit code 0 (build and review runs).
+```
 
 ### 2026-11-12 Step 6. 05-ansible/
 
@@ -550,5 +601,13 @@ Status: REVISIT
 ```
 Issue:  Step 7 needs a local Kubernetes tool. None of k3d, kind or minikube was installed.
 Action: Installed k3d 5.9.0 with winget (winget install --id k3d.k3d, portable package, user scope). No admin prompt and no reboot. winget added the package folder to the user PATH. kubectl 1.36.1 from Docker Desktop was already present. Cost if wrong: winget uninstall k3d.k3d. Decided alone during the build run, under the owner's rule for host installs.
+Status: REVISIT
+```
+
+### Kubernetes and root readme choices
+
+```
+Issue:  The spec lists the Kubernetes objects and the parts of the root README, but not the names, the file layout or how the local cluster is used without touching the owner's own kubeconfig.
+Action: Plain manifests with number prefixes so one apply creates the namespace first. Namespace portfolio with the restricted Pod Security level enforced. Image portfolio-app:0.1.0 with pull policy IfNotPresent, imported into the cluster, never pulled. Service of type ClusterIP on port 80. The cluster is named portfolio. Its kubeconfig is written to 06-kubernetes/.kubeconfig, which git ignores, and every kubectl call names that file, so the default kubeconfig stays untouched. The root README keeps the owner's opening lines, shows only commands that were really run, and says that no image has been pushed yet. Decided alone during the build run.
 Status: REVISIT
 ```
