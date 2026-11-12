@@ -12,20 +12,12 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 0. Preflight
-
-```
-Issue:  Step 0. Preflight. Check Python >= 3.10, git, Docker daemon reachable and able to run a Linux container, free disk >= 10 GB, network access to PyPI and Docker Hub, a local Kubernetes tool (k3d, kind or minikube) present or installable with winget or scoop without admin rights.
-Action: Checked on 2026-11-12. Every check passes except Docker. Docker Desktop is installed but not running, so the daemon is unreachable. The rule for this case is to stop. Next: the owner starts Docker Desktop, then preflight runs again from the top.
-Status: BLOCKED
-```
-
 ### Step 1. app/ and root README
 
 ```
 Issue:  Step 1. Build app/main.py (FastAPI, exactly two endpoints: GET /health returns {"status": "ok"}, GET /version returns {"version": <value>} from env var APP_VERSION, default "0.1.0"), app/requirements.txt (runtime only: fastapi, uvicorn), app/requirements-dev.txt (first line "-r requirements.txt", then pytest, httpx), every package pinned to the exact installed version, app/tests/test_health.py (two TestClient tests), app/README.md and root README.md with the owner's exact wording, ".pytest_cache/" in .gitignore. Commit app code, requirements and tests first, both readme files second.
-Action: Gate: pytest passes from app/ inside .venv, and both endpoints answer on a live uvicorn.
-Status: OPEN
+Action: Gate: pytest passes from app/ inside .venv, and both endpoints answer on a live uvicorn. Started 2026-11-12 05:45 (+0200).
+Status: IN PROGRESS
 ```
 
 ### Step 2. 01-linux-bash/
@@ -91,6 +83,37 @@ Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 0. Preflight passed
+
+```
+Issue:  Step 0. Preflight, second run after the owner started Docker Desktop. Start 05:40, end 05:43 (+0200). The first run, 03:14 to 03:18, was blocked. See the entry below.
+Action: All checks pass. Planned as live checks: the app, the shell scripts, the image, the Ansible run in a container, Kubernetes on a local cluster (k3d gets installed with winget when step 7 starts). Static checks only, by rule: Terraform (no plan, no apply), the CI workflow (not run on GitHub), and the Ansible tasks that need a real host.
+Status: DONE
+```
+
+Gate evidence:
+
+```
+$ python --version
+Python 3.14.3
+$ git --version
+git version 2.53.0.windows.3
+$ docker version --format 'client={{.Client.Version}} server={{.Server.Version}} os={{.Server.Os}}/{{.Server.Arch}}'
+client=29.8.2 server=29.8.2 os=linux/amd64
+$ docker run --rm alpine:3.21 sh -c 'echo container-ok; uname -sm; cat /etc/alpine-release'
+container-ok
+Linux x86_64
+3.21.10
+$ df -h /c
+C:              347G  233G  115G  67% /c
+$ curl -s -o /dev/null -w 'pypi %{http_code}\n' https://pypi.org/simple/fastapi/
+pypi 200
+$ winget show --id k3d.k3d --exact --source winget
+Found k3d [k3d.k3d]
+Version: 5.9.0
+Installer Type: portable
+```
 
 ### 2026-11-12 Step 0 preflight for the build run
 
