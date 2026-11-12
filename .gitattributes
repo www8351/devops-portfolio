@@ -1,4 +1,8 @@
-# Linux targets need LF line endings, even when the checkout is on Windows.
+# Every text file is checked out with LF line endings, on Windows too.
+# The scripts and checks in this repo run in Linux containers and read these files as they are.
+* text=auto eol=lf
+
+# The file types that break on Linux with CRLF, named one by one as well.
 *.sh        text eol=lf
 Dockerfile  text eol=lf
 *.dockerignore text eol=lf
