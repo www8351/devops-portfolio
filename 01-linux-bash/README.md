@@ -2,7 +2,7 @@
 
 ## What this is
 
-Three Bash scripts that run the app on a plain Linux host, without containers.
+Three Bash scripts that run and watch the app on a plain Linux host, without containers. A fourth script tests them.
 
 * `setup.sh` installs the app on Ubuntu or Debian. It creates a service account, copies the app to /opt/portfolio-app, builds a venv, installs the pinned requirements, creates the log folder and writes a systemd unit file.
 * `healthcheck.sh` calls /health once and appends one line to a log. It prints nothing when the app is healthy, so it fits in cron.
@@ -14,6 +14,7 @@ Three Bash scripts that run the app on a plain Linux host, without containers.
 * The app runs as `appuser`, a system account with no login shell and no home dir. The code in /opt/portfolio-app belongs to root, so the app cannot change its own code. The account owns only the log folder.
 * The venv lives inside the install dir, so the app's packages stay away from the system Python.
 * The unit file tells systemd to start the app at boot and to restart it if it crashes. I added a little hardening: NoNewPrivileges, PrivateTmp, ProtectHome and ProtectSystem=full. I kept it modest on purpose.
+* The unit file starts uvicorn with `--host 0.0.0.0`. The app listens on all network interfaces on the chosen port, so other machines can reach it. A firewall or a cloud security group decides who gets in.
 * `setup.sh` is safe to run twice. It skips the account and the venv when they already exist and writes the files again.
 * `healthcheck.sh` is made for cron. It is silent when the app is healthy and prints one line on stderr when it is not, so cron only reports real problems. The exit code says what happened: 0 healthy, 1 not healthy or log not writable, 2 bad option. A failed curl call does not stop the script before the FAIL line is written.
 * The log is plain text, one line per check. grep and awk are enough to read it, and `log-report.sh` is a few lines of awk.
@@ -28,23 +29,29 @@ All four scripts ran in an Ubuntu 24.04 container, from the repo root, with this
 docker run --rm --name pf-linux-bash -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash 01-linux-bash/verify.sh
 ```
 
-`verify.sh` installs python3, python3-venv and curl, runs `setup.sh` twice, starts the app as appuser and checks that it does not run as root. Then it runs `healthcheck.sh` with the app up and again with the app stopped, and checks the log and the report line by line. The repo is mounted read only. The end of the output from my run:
+`verify.sh` installs python3, python3-venv and curl, runs `setup.sh` twice, starts the app as appuser and checks that it does not run as root. Then it runs `healthcheck.sh` with the app up and again with the app stopped, and checks the log and the report line by line. It also checks that `setup.sh` refuses a bad user name and a relative install dir. The repo is mounted read only. The end of the output from my run:
 
 ```
 Log (/var/log/portfolio-app/health.log):
-2026-11-12T04:12:34Z OK http=200 url=http://127.0.0.1:8000/health
-2026-11-12T04:12:35Z FAIL http=000 url=http://127.0.0.1:8000/health reason="could not connect"
+2026-11-12T04:41:50Z OK http=200 url=http://127.0.0.1:8000/health
+2026-11-12T04:41:51Z FAIL http=000 url=http://127.0.0.1:8000/health reason="could not connect"
 
 Report:
 Log file:          /var/log/portfolio-app/health.log
 Total checks:      2
 Failures:          1
-Last failure time: 2026-11-12T04:12:35Z
+Last failure time: 2026-11-12T04:41:51Z
 
 VERIFY PASSED
 ```
 
-The container has no systemd. `setup.sh` wrote the unit file there but did not start the service, and `verify.sh` started the app by hand as appuser instead. So systemd never ran the unit. I only checked the file with `systemd-analyze verify` in the same kind of container, and it reported no errors.
+The container has no systemd. `setup.sh` wrote the unit file there but did not start the service, and `verify.sh` started the app by hand as appuser instead. So systemd never ran the unit. I only checked the file. This command installs systemd in a fresh container, runs `setup.sh` and then runs `systemd-analyze verify` on the unit file:
+
+```
+docker run --rm --name pf-linux-bash-unit -e DEBIAN_FRONTEND=noninteractive -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 python3-venv systemd >/dev/null && bash 01-linux-bash/setup.sh >/dev/null && systemd-analyze verify /etc/systemd/system/portfolio-app.service && echo unit file verified"
+```
+
+It printed one debconf notice from apt and then `unit file verified`. The exit code was 0.
 
 I did not run the next commands on a real Ubuntu host. They use the same scripts and defaults that ran in the container. From the repo root:
 
@@ -77,7 +84,7 @@ Each script prints its options with -h.
 
 ## מה זה
 
-שלושה סקריפטים של `Bash` שמריצים את האפליקציה על שרת `Linux` רגיל, בלי קונטיינרים.
+שלושה סקריפטים של `Bash` שמריצים את האפליקציה ומשגיחים עליה על שרת `Linux` רגיל, בלי קונטיינרים. סקריפט רביעי בודק אותם.
 
 * הסקריפט `setup.sh` מתקין את האפליקציה על `Ubuntu` או `Debian`. הוא יוצר חשבון שירות, מעתיק את האפליקציה אל `/opt/portfolio-app`, בונה `venv`, מתקין את החבילות הנעולות, יוצר את תיקיית הלוגים וכותב קובץ `unit` של `systemd`.
 * הסקריפט `healthcheck.sh` פונה אל `/health` פעם אחת ומוסיף שורה אחת ללוג. כשהאפליקציה תקינה הוא לא מדפיס כלום, ולכן הוא מתאים ל-`cron`.
@@ -89,6 +96,7 @@ Each script prints its options with -h.
 * האפליקציה רצה תחת `appuser`, חשבון מערכת בלי מעטפת התחברות ובלי תיקיית בית. הקוד ב-`/opt/portfolio-app` שייך ל-`root`, כך שהאפליקציה לא יכולה לשנות את הקוד של עצמה. לחשבון שייכת רק תיקיית הלוגים.
 * סביבת ה-`venv` נמצאת בתוך תיקיית ההתקנה, כך שהחבילות של האפליקציה נשארות רחוקות מה-`Python` של המערכת.
 * קובץ ה-`unit` אומר ל-`systemd` להפעיל את האפליקציה בעליית המערכת ולהפעיל אותה מחדש אם היא קורסת. הוספתי מעט הקשחה: `NoNewPrivileges`, `PrivateTmp`, `ProtectHome` ו-`ProtectSystem=full`. שמרתי על זה צנוע בכוונה.
+* קובץ ה-`unit` מפעיל את `uvicorn` עם `--host 0.0.0.0`. האפליקציה מאזינה בכל ממשקי הרשת על הפורט שנבחר, כך שמחשבים אחרים יכולים להגיע אליה. חומת אש או `security group` בענן קובעים מי נכנס.
 * אפשר להריץ את `setup.sh` פעמיים. הוא מדלג על החשבון ועל ה-`venv` כשהם כבר קיימים, וכותב את הקבצים מחדש.
 * הסקריפט `healthcheck.sh` נבנה בשביל `cron`. הוא שקט כשהאפליקציה תקינה ומדפיס שורה אחת ל-`stderr` כשהיא לא, כך ש-`cron` מדווח רק על בעיות אמיתיות. קוד היציאה מספר מה קרה: `0` תקין, `1` לא תקין או שאי אפשר לכתוב ללוג, `2` אפשרות שגויה. קריאת `curl` שנכשלה לא עוצרת את הסקריפט לפני ששורת ה-`FAIL` נכתבת.
 * הלוג הוא טקסט פשוט, שורה אחת לכל בדיקה. מספיקים `grep` ו-`awk` כדי לקרוא אותו, והסקריפט `log-report.sh` הוא כמה שורות של `awk`.
@@ -103,23 +111,29 @@ Each script prints its options with -h.
 docker run --rm --name pf-linux-bash -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash 01-linux-bash/verify.sh
 ```
 
-הסקריפט `verify.sh` מתקין את `python3`, `python3-venv` ו-`curl`, מריץ את `setup.sh` פעמיים, מפעיל את האפליקציה תחת `appuser` ובודק שהיא לא רצה כ-`root`. אחר כך הוא מריץ את `healthcheck.sh` כשהאפליקציה פועלת ושוב כשהיא עצורה, ובודק את הלוג ואת הדוח שורה אחר שורה. הריפו מחובר לקריאה בלבד. סוף הפלט מהריצה שלי:
+הסקריפט `verify.sh` מתקין את `python3`, `python3-venv` ו-`curl`, מריץ את `setup.sh` פעמיים, מפעיל את האפליקציה תחת `appuser` ובודק שהיא לא רצה כ-`root`. אחר כך הוא מריץ את `healthcheck.sh` כשהאפליקציה פועלת ושוב כשהיא עצורה, ובודק את הלוג ואת הדוח שורה אחר שורה. הוא גם בודק שהסקריפט `setup.sh` דוחה שם חשבון לא תקין ותיקיית התקנה עם נתיב יחסי. הריפו מחובר לקריאה בלבד. סוף הפלט מהריצה שלי:
 
 ```
 Log (/var/log/portfolio-app/health.log):
-2026-11-12T04:12:34Z OK http=200 url=http://127.0.0.1:8000/health
-2026-11-12T04:12:35Z FAIL http=000 url=http://127.0.0.1:8000/health reason="could not connect"
+2026-11-12T04:41:50Z OK http=200 url=http://127.0.0.1:8000/health
+2026-11-12T04:41:51Z FAIL http=000 url=http://127.0.0.1:8000/health reason="could not connect"
 
 Report:
 Log file:          /var/log/portfolio-app/health.log
 Total checks:      2
 Failures:          1
-Last failure time: 2026-11-12T04:12:35Z
+Last failure time: 2026-11-12T04:41:51Z
 
 VERIFY PASSED
 ```
 
-אין `systemd` בתוך הקונטיינר. הסקריפט `setup.sh` כתב שם את קובץ ה-`unit` אבל לא הפעיל את השירות, והסקריפט `verify.sh` הפעיל את האפליקציה ידנית תחת `appuser` במקום זה. כלומר `systemd` אף פעם לא הריץ את קובץ ה-`unit`. בדקתי את הקובץ רק עם `systemd-analyze verify` בקונטיינר מאותו סוג, והבדיקה לא מצאה שגיאות.
+אין `systemd` בתוך הקונטיינר. הסקריפט `setup.sh` כתב שם את קובץ ה-`unit` אבל לא הפעיל את השירות, והסקריפט `verify.sh` הפעיל את האפליקציה ידנית תחת `appuser` במקום זה. כלומר `systemd` אף פעם לא הריץ את קובץ ה-`unit`. בדקתי רק את הקובץ. הפקודה הזאת מתקינה `systemd` בקונטיינר חדש, מריצה את `setup.sh` ואז מריצה את `systemd-analyze verify` על קובץ ה-`unit`:
+
+```
+docker run --rm --name pf-linux-bash-unit -e DEBIAN_FRONTEND=noninteractive -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 python3-venv systemd >/dev/null && bash 01-linux-bash/setup.sh >/dev/null && systemd-analyze verify /etc/systemd/system/portfolio-app.service && echo unit file verified"
+```
+
+הפקודה הדפיסה הודעה אחת של `debconf` מ-`apt` ואחריה את `unit file verified`. קוד היציאה היה `0`.
 
 לא הרצתי את הפקודות הבאות על שרת `Ubuntu` אמיתי. אלה אותם סקריפטים ואותן ברירות מחדל שרצו בקונטיינר. מתיקיית השורש של הריפו:
 
