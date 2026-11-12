@@ -1,0 +1,4 @@
+# Named after the Dockerfile, so BuildKit reads it even though the build context is the repo root.
+*
+!app/main.py
+!app/requirements.txt
