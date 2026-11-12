@@ -12,20 +12,12 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 1. app/ and root README
-
-```
-Issue:  Step 1. Build app/main.py (FastAPI, exactly two endpoints: GET /health returns {"status": "ok"}, GET /version returns {"version": <value>} from env var APP_VERSION, default "0.1.0"), app/requirements.txt (runtime only: fastapi, uvicorn), app/requirements-dev.txt (first line "-r requirements.txt", then pytest, httpx), every package pinned to the exact installed version, app/tests/test_health.py (two TestClient tests), app/README.md and root README.md with the owner's exact wording, ".pytest_cache/" in .gitignore. Commit app code, requirements and tests first, both readme files second.
-Action: Gate: pytest passes from app/ inside .venv, and both endpoints answer on a live uvicorn. Started 2026-11-12 05:45 (+0200).
-Status: IN PROGRESS
-```
-
 ### Step 2. 01-linux-bash/
 
 ```
 Issue:  Step 2. Build setup.sh (service user, venv, install app, systemd unit file), healthcheck.sh (calls /health, writes a timestamped log line, non-zero exit on failure, cron friendly), log-report.sh (summarizes that log: total checks, failures, last failure time). All use set -euo pipefail and print a usage message. Folder readme per the readme rules.
-Action: Gate: shellcheck clean. healthcheck.sh and log-report.sh run for real in an Ubuntu container against the running app, once healthy and once with the app stopped, and both results are correct.
-Status: OPEN
+Action: Gate: shellcheck clean. healthcheck.sh and log-report.sh run for real in an Ubuntu container against the running app, once healthy and once with the app stopped, and both results are correct. Started 2026-11-12 05:58 (+0200).
+Status: IN PROGRESS
 ```
 
 ### Step 3. 02-docker/
@@ -82,7 +74,53 @@ Action: If that folder is gone, the owner supplies the texts again.
 Status: OPEN
 ```
 
+```
+Issue:  pytest passes but prints one deprecation warning: starlette 1.10.0 says that httpx with its test client is deprecated and asks for the package httpx2. The spec names httpx, so httpx stays. A later starlette release may drop httpx support, and starlette is not pinned.
+Action: Owner decides: keep httpx, or replace it with httpx2 in app/requirements-dev.txt (one line). The warning is not hidden.
+Status: OPEN
+```
+
+```
+Issue:  The .gitignore copied from the main checkout names local tooling files in its last block (lines 28 to 31) and carries a byte order mark. The lines were left untouched as the owner asked.
+Action: Owner decides whether to edit those lines before the repo is published.
+Status: OPEN
+```
+
+```
+Issue:  Review note deferred from step 1: only the four named packages are pinned. Their dependencies (starlette, pydantic and others) float, so a later install can differ from the tested one.
+Action: Possible later fix: a constraints file. Not done, the spec pins the named packages only.
+Status: OPEN
+```
+
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 1. app/ and root README
+
+```
+Issue:  Step 1. app/ and root README. Start 05:45, end 05:56 (+0200).
+Action: Built app/main.py, app/pytest.ini, app/tests/test_health.py, both requirements files, app/README.md, the root README.md (renamed from Readme.md), .gitignore and .gitattributes. Pins on Python 3.14.3: fastapi 0.162.5, uvicorn 0.54.0, pytest 9.2.0, httpx 0.28.1. A separate review checked every file against the spec and reran the gate. Commits b5e3972, 95a12ef, 211d2b6.
+Status: DONE
+```
+
+Gate evidence:
+
+```
+$ ../.venv/Scripts/pytest.exe -v                                   (from app/)
+tests/test_health.py::test_health_returns_ok PASSED
+tests/test_health.py::test_version_returns_default PASSED
+StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+2 passed, 1 warning in 0.38s                                       (exit code 0)
+$ python -m uvicorn main:app --host 127.0.0.1 --port 8000          (venv python, from app/, started once)
+$ curl -s -w " [http %{http_code}]" http://127.0.0.1:8000/health
+{"status":"ok"} [http 200]
+$ curl -s -w " [http %{http_code}]" http://127.0.0.1:8000/version
+{"version":"0.1.0"} [http 200]
+$ curl -s -o NUL -w "/docs [http %{http_code}]" http://127.0.0.1:8000/docs
+/docs [http 404]
+server stopped. listeners on port 8000 after stop: 0. curl after stop: exit 7, connection refused.
+$ cmp app/README.md <owner text>   and   cmp README.md <owner text>
+identical, identical
+```
 
 ### 2026-11-12 Step 0. Preflight passed
 
@@ -236,5 +274,53 @@ Status: REVISIT
 ```
 Issue:  The folders must agree on names, ports and versions.
 Action: Planned values: app port 8000, local image name portfolio-app, container user UID 10001, service user appuser on Linux hosts, systemd unit and Kubernetes objects named portfolio-app, Kubernetes namespace portfolio, Python 3.14 in the venv, in the image and in CI. Decided alone during the build run.
+Status: REVISIT
+```
+
+### App serves exactly two routes
+
+```
+Issue:  FastAPI adds /docs, /redoc and /openapi.json by default. The spec says exactly two endpoints.
+Action: Switched the three generated routes off in app/main.py, so only /health and /version answer. Cost if wrong: one line to turn them back on. Decided alone during the build run.
+Status: REVISIT
+```
+
+### Extra file app/pytest.ini
+
+```
+Issue:  Plain "pytest" from app/ cannot import main.py, because pytest only puts the tests folder on the import path.
+Action: Added app/pytest.ini with pythonpath = . and testpaths = tests. No other extra file. Cost if wrong: remove the file and run "python -m pytest" instead. Decided alone during the build run.
+Status: REVISIT
+```
+
+### Version test clears APP_VERSION
+
+```
+Issue:  The default version test would fail on a machine where APP_VERSION is already set.
+Action: The test removes APP_VERSION from the environment before it calls /version. Still exactly two tests. Decided alone during the build run.
+Status: REVISIT
+```
+
+### httpx kept, deprecation warning accepted
+
+```
+Issue:  pytest prints one starlette deprecation warning that asks for httpx2 in place of httpx. Removing it needs a different package than the spec names, a pin the spec does not list, or a filter that hides the warning.
+Action: Kept httpx as the spec says. The warning stays visible. No package outside the spec was installed. The gate, pytest passes, is met with exit code 0. Cost if wrong: one line in app/requirements-dev.txt. Decided alone during the build run. See the open item in ISSUES.
+Status: REVISIT
+```
+
+### Housekeeping commit and added ignore lines
+
+```
+Issue:  The spec lists two commits for step 1 and does not place .gitignore or .gitattributes in either. The build also needs a scratch folder that git does not see.
+Action: .gitignore and .gitattributes went into their own commit before the app commit. .gitignore gained two appended blocks: .pytest_cache/ and .tmp/ (local scratch). Decided alone during the build run.
+Status: REVISIT
+```
+
+### Gate helper scripts in two folders
+
+```
+Issue:  The gates for 01-linux-bash and 05-ansible run inside an Ubuntu container. Long one-off docker command lines are hard to repeat by hand.
+Action: Each of the two folders gets a small verify.sh that reproduces its gate inside the container with one docker command. The scripts follow the same rules as the others (set -euo pipefail, usage, shellcheck clean). Cost if wrong: delete two files. Decided alone during the build run.
 Status: REVISIT
 ```
