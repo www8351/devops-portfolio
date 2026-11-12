@@ -12,20 +12,12 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 6. 05-ansible/
-
-```
-Issue:  Step 6. Build one playbook with three roles: base (packages, service user, firewall), docker (engine install), app (run the image as a container, wait for /health). An inventory example that takes the IP from the Terraform output. Folder readme per the readme rules.
-Action: Gate: ansible-lint clean, syntax check passes. Run the playbook against a local Ubuntu container. Tasks that cannot run inside a container (systemd, firewall, Docker engine) carry a tag and are skipped there. A second run reports zero changes. The skipped tasks are listed in the final report as lint verified only. Started 2026-11-12 07:55 (+0200).
-Status: IN PROGRESS
-```
-
 ### Step 7. 06-kubernetes/ and the final root README
 
 ```
 Issue:  Step 7. Build Namespace, ConfigMap for APP_VERSION, Deployment (2 replicas, readiness and liveness probes on /health, resource requests and limits, non-root security context), Service. Folder readme per the readme rules. Then rewrite the root README: what the repo is, a table of the folders with one line each, a Mermaid diagram of the path from code to running container, how to run each folder.
-Action: Gate: manifests validate. On a local cluster: import the image, apply, rollout completes, /health answers through a port-forward, delete one pod and confirm it is replaced. Delete the cluster afterwards. If no local cluster tool is available: validate only, and say so.
-Status: OPEN
+Action: Gate: manifests validate. On a local cluster: import the image, apply, rollout completes, /health answers through a port-forward, delete one pod and confirm it is replaced. Delete the cluster afterwards. If no local cluster tool is available: validate only, and say so. Started 2026-11-12 09:05 (+0200). k3d 5.9.0 was installed with winget at 08:44 for this step.
+Status: IN PROGRESS
 ```
 
 ### Other open items
@@ -67,6 +59,18 @@ Status: OPEN
 ```
 
 ```
+Issue:  Eight Ansible tasks carry the tag host_only and never ran in the playbook test. They are checked by ansible-lint and the syntax check only: base: Allow SSH through the firewall, Allow the app port through the firewall, Deny incoming traffic by default, Enable the firewall. docker: Install the Docker engine, Enable and start the Docker service. app: Run the app container, Wait until /health answers. The playbook has never run against a real server.
+Action: A VM with systemd or the server from 04-terraform is the first real check. This list goes in the final report as lint verified only.
+Status: OPEN
+```
+
+```
+Issue:  Review notes deferred from step 6, all minor: the readme says the eight tagged tasks never ran although the engine install ran once in a probe container; the tag assert is skipped when someone runs with --tags host_only alone; three readme bullets are long; verify.sh pins ansible-core and ansible-lint but not their dependencies.
+Action: Triage in the final review of the whole branch. None of them breaks the gate.
+Status: OPEN
+```
+
+```
 Issue:  The Terraform code has never planned or applied anything. Not exercised: the my_ip validation rule (Terraform evaluates it at plan time), the AMI lookup, the default VPC lookup, the instance launch, both outputs.
 Action: The owner's first plan in a real AWS account is the first real check. This goes in the final report.
 Status: OPEN
@@ -97,6 +101,37 @@ Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 6. 05-ansible/
+
+```
+Issue:  Step 6. 05-ansible/. Start 07:55, end 09:03 (+0200).
+Action: Built site.yml, the roles base, docker and app, group_vars, requirements.yml, inventory.example.ini, verify.sh and the folder readme. A separate review approved the code and found two tagging problems: the image tag assert was tagged although it runs in a container, and the readme gave untrue reasons for two tags. One fix round moved the assert to pre_tasks without a tag, corrected the readme, added update_cache to the engine install and made the SSH rule follow ansible_port. A scoped second review found every point addressed. Versions: ansible-core 2.21.6, ansible-lint 26.11.0, community.general 14.0.1, community.docker 5.4.0, Python 3.12.3 in ubuntu:24.04, koalaman/shellcheck:v0.11.0. Commits 2b82a22, 210f427, 0012ad3, fcbb883.
+Status: DONE
+```
+
+Gate evidence, final code at fcbb883:
+
+```
+$ docker run --rm -v "${PWD}:/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 05-ansible/verify.sh
+(no output)                                                                  exit code 0
+$ docker run --rm --name pf-ansible-ctl -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash 05-ansible/verify.sh
+Passed: 0 failure(s), 0 warning(s) in 12 files processed of 15 encountered. Last profile that met the validation criteria was 'production'.
+playbook: site.yml
+run without app_image_tag:  ok=1  changed=0  failed=1   (stopped at the assert, nothing changed)
+run 1:                      ok=8  changed=5  failed=0
+run 2:                      ok=7  changed=0  failed=0
+skipped in the container (host_only):
+  base : Allow SSH through the firewall
+  base : Allow the app port through the firewall
+  base : Deny incoming traffic by default
+  base : Enable the firewall
+  docker : Install the Docker engine
+  docker : Enable and start the Docker service
+  app : Run the app container
+  app : Wait until /health answers
+VERIFY PASSED                                                                exit code 0, 276 seconds
+```
 
 ### 2026-11-12 Step 5. 04-terraform/
 
@@ -499,5 +534,21 @@ Status: REVISIT
 ```
 Issue:  The spec lists what the Terraform code must contain but not the region, the image, the network or the tool versions.
 Action: Region default eu-central-1, instance type default t3.micro, newest Ubuntu 24.04 amd64 image from Canonical, the default VPC, separate rule resources, all outbound traffic allowed, IMDSv2 required, encrypted gp3 root volume. my_ip is a bare IPv4 address and the code adds /32. Terraform range >= 1.9, < 2.0, checked with 1.17.2. The lock file is tracked and holds checksums for linux_amd64 only. One line was added to .gitattributes to force LF for *.hcl. Decided alone during the build run.
+Status: REVISIT
+```
+
+### Ansible tags and choices
+
+```
+Issue:  The spec says tasks that cannot run inside a container (systemd, firewall, Docker engine) carry a tag. A probe showed the Docker engine packages do install in a plain container, only the engine cannot start there. The image tag check runs in a container without any problem.
+Action: One tag, host_only, on eight tasks: the four firewall tasks, the engine install, the Docker service task, the app container and the health wait. The engine install keeps the tag because the spec names the Docker engine, and the readme says plainly that its packages install in a plain container. The image tag check has no tag and runs first, in pre_tasks. Cost if wrong: one tag line each. Also decided: the service user gets uid and gid 10001 like the image, the Docker repository uses deb822_repository, the test runs inside one Ubuntu container with a local connection, ansible-core is 2.21.6 because 2.22 needs Python 3.13. One line was added to .gitattributes to force LF for *.ini. Decided alone during the build run.
+Status: REVISIT
+```
+
+### k3d installed on the host
+
+```
+Issue:  Step 7 needs a local Kubernetes tool. None of k3d, kind or minikube was installed.
+Action: Installed k3d 5.9.0 with winget (winget install --id k3d.k3d, portable package, user scope). No admin prompt and no reboot. winget added the package folder to the user PATH. kubectl 1.36.1 from Docker Desktop was already present. Cost if wrong: winget uninstall k3d.k3d. Decided alone during the build run, under the owner's rule for host installs.
 Status: REVISIT
 ```
