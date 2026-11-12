@@ -31,4 +31,11 @@ variable "app_port" {
   description = "TCP port the app listens on. The security group opens it to everyone."
   type        = number
   default     = 8000
+
+  validation {
+    # A whole number from 1 to 65535, and not 22. The app rule is open to everyone,
+    # so 22 would open SSH to everyone, while SSH may only come from my_ip.
+    condition     = var.app_port == floor(var.app_port) && var.app_port >= 1 && var.app_port <= 65535 && var.app_port != 22
+    error_message = "The app_port value must be a whole number from 1 to 65535 and not 22. Port 22 is SSH, which only my_ip may reach."
+  }
 }

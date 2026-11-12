@@ -18,11 +18,12 @@ Terraform code for one small EC2 instance on AWS, a server the app could run on,
 * The instance type is a variable with the default `t3.micro`. A bigger server is one line in `terraform.tfvars`.
 * The security group lets in two things. SSH on port 22 comes only from `my_ip`, as a /32. The app port, 8000 by default, is open to everyone, because that is where the app answers. All outbound traffic is allowed, so the server can download packages and the app image.
 * `my_ip` has a validation rule: four numbers from 0 to 255 with dots between them, and nothing else. The code adds the `/32` itself, so `203.0.113.10/32` would become `203.0.113.10/32/32`. The rule rejects that, and also text like `abc`. Terraform checks the rule once it gets a value, at plan time, and I did not run a plan. I tested the same pattern in Python: it accepted `203.0.113.10` and rejected `203.0.113.10/32` and `abc`.
+* `app_port` has a validation rule too: a whole number from 1 to 65535, and not 22, because the app port is open to everyone and 22 would open SSH to everyone as well. As with `my_ip`, Terraform checks this rule at plan time, and I did not run a plan.
 * Each rule is its own resource (`aws_vpc_security_group_ingress_rule`, `aws_vpc_security_group_egress_rule`), not a block inside the group. Each one has its own description, and a change to one rule leaves the others alone. Terraform removes the default outbound rule of a new group, so the outbound rule is written out.
 * The image is the newest Ubuntu 24.04 amd64 server image owned by Canonical's account `099720109477`. The owner filter means an image that someone else published under a similar name is never picked. The default login on these images is `ubuntu`, and `ssh_command` uses it.
 * The instance requires IMDSv2 (`http_tokens = "required"`). A request to the metadata service needs a session token first, which blocks the simple way to read the instance credentials through a forged request. The root volume is gp3 and encrypted.
 * The instance asks for a public IP itself (`associate_public_ip_address = true`), so the outputs do not depend on how the default subnet is set.
-* The default VPC keeps the code small. There is no network of my own to build.
+* I used the default VPC, so there is no network of my own to build.
 * `default_tags` in the provider puts `Project = "devops-portfolio"` and `ManagedBy = "terraform"` on every resource. The instance is also named `portfolio-app`.
 * `public_ip` holds only the address, so a script can read it with `terraform output -raw public_ip`.
 * Git ignores `.terraform/`, `*.tfstate`, `*.tfstate.*`, `*.tfvars` and `*.tfvars.json`. The state holds every attribute of the resources, and `terraform.tfvars` holds a real address and key name. The example file ends in `.example`, so git keeps it. The lock file is tracked too, because it is part of the pin. I checked all of this with `git check-ignore -v`.
@@ -83,11 +84,11 @@ I did not run `terraform destroy` either. It removes everything again.
 
 ## מה זה
 
-קוד `Terraform` לשרת `EC2` קטן אחד ב-`AWS`, שרת שהאפליקציה יכולה לרוץ עליו, ול-`security group` שמסביבו. בדקתי את הקוד עם `terraform fmt`, עם `terraform init` בלי `backend` ועם `terraform validate`. לא הרצתי `plan` ולא `apply`, ולכן הקוד הזה לא יצר אף פעם שום דבר.
+קוד `Terraform` לשרת `EC2` קטן אחד ב-`AWS`, שרת שהאפליקציה יכולה לרוץ עליו, ולקבוצת האבטחה (`security group`) שמסביבו. בדקתי את הקוד עם `terraform fmt`, עם `terraform init` בלי `backend` ועם `terraform validate`. לא הרצתי `plan` ולא `apply`, ולכן הקוד הזה לא יצר אף פעם שום דבר.
 
 * הקובץ `versions.tf` קובע את טווח הגרסאות של `Terraform` ונועל את ה-`provider` של `AWS`.
 * הקובץ `variables.tf` מחזיק את הקלטים: אזור, סוג שרת, `my_ip`, שם של `key pair` ופורט האפליקציה.
-* הקובץ `main.tf` מכיל את ה-`provider`, את החיפוש של אימג' `Ubuntu 24.04`, את ה-`VPC` של ברירת המחדל, את ה-`security group` עם הכללים שלו ואת השרת.
+* הקובץ `main.tf` מכיל את ה-`provider`, את החיפוש של אימג' `Ubuntu 24.04`, את ה-`VPC` של ברירת המחדל, את קבוצת האבטחה עם הכללים שלה ואת השרת.
 * הקובץ `outputs.tf` מדפיס את כתובת ה-`IP` הציבורית ופקודת `SSH`.
 * הקובץ `terraform.tfvars.example` מכיל ערכים לדוגמה.
 * הקובץ `.terraform.lock.hcl` רושם את גרסת ה-`provider` ואת ה-`checksums` שלה. הפקודה `terraform init` כתבה אותו.
@@ -99,11 +100,12 @@ I did not run `terraform destroy` either. It removes everything again.
 * סוג השרת הוא משתנה, עם ברירת המחדל `t3.micro`. שרת גדול יותר הוא שורה אחת ב-`terraform.tfvars`.
 * קבוצת האבטחה מכניסה שני דברים. חיבור `SSH` בפורט `22` מגיע רק מ-`my_ip`, בתור `/32`. פורט האפליקציה, `8000` כברירת מחדל, פתוח לכולם, כי שם האפליקציה עונה. כל התעבורה היוצאת מותרת, כדי שהשרת יוכל להוריד חבילות ואת האימג' של האפליקציה.
 * למשתנה `my_ip` יש כלל אימות: ארבעה מספרים מ-0 עד 255 עם נקודות ביניהם, ותו לא. הקוד מוסיף את ה-`/32` בעצמו, כך ש-`203.0.113.10/32` היה הופך ל-`203.0.113.10/32/32`. הכלל דוחה ערך כזה, וגם טקסט כמו `abc`. הכלי `Terraform` בודק את הכלל כשהוא מקבל ערך, בזמן `plan`, ולא הרצתי `plan`. בדקתי את אותה תבנית ב-`Python`: היא קיבלה את `203.0.113.10` ודחתה את `203.0.113.10/32` ואת `abc`.
+* גם למשתנה `app_port` יש כלל אימות: מספר שלם מ-1 עד 65535, ולא 22, כי פורט האפליקציה פתוח לכולם, והערך 22 היה פותח לכולם גם את `SSH`. כמו ב-`my_ip`, הכלי `Terraform` בודק את הכלל הזה בזמן `plan`, ולא הרצתי `plan`.
 * כל כלל הוא משאב נפרד (`aws_vpc_security_group_ingress_rule`, `aws_vpc_security_group_egress_rule`), ולא בלוק בתוך הקבוצה. לכל אחד יש תיאור משלו, ושינוי בכלל אחד לא נוגע באחרים. הכלי `Terraform` מסיר את כלל היציאה של ברירת המחדל מקבוצה חדשה, ולכן כלל היציאה כתוב במפורש.
 * האימג' הוא אימג' השרת החדש ביותר של `Ubuntu 24.04` ל-`amd64`, שהבעלים שלו הוא החשבון של `Canonical`, `099720109477`. בזכות הסינון לפי בעלים, אימג' שמישהו אחר פרסם בשם דומה לא ייבחר אף פעם. חשבון ההתחברות של ברירת המחדל באימג'ים האלה הוא `ubuntu`, והוא מופיע ב-`ssh_command`.
 * השרת דורש `IMDSv2` (`http_tokens = "required"`). בקשה לשירות ה-`metadata` צריכה קודם `token` של סשן, וזה חוסם את הדרך הפשוטה לקרוא את ה-`credentials` של השרת דרך בקשה מזויפת. דיסק השורש הוא `gp3` ומוצפן.
 * השרת מבקש כתובת `IP` ציבורית בעצמו (`associate_public_ip_address = true`), כך שהפלטים לא תלויים בהגדרה של ה-`subnet` של ברירת המחדל.
-* רשת ה-`VPC` של ברירת המחדל שומרת על הקוד קטן. אין רשת משלי לבנות.
+* השתמשתי ב-`VPC` של ברירת המחדל, ולכן אין צורך לבנות רשת משלי.
 * ההגדרה `default_tags` ב-`provider` שמה את `Project = "devops-portfolio"` ואת `ManagedBy = "terraform"` על כל משאב. לשרת יש גם את השם `portfolio-app`.
 * הפלט `public_ip` מחזיק רק את הכתובת, כך שסקריפט יכול לקרוא אותו עם `terraform output -raw public_ip`.
 * הכלי `git` מתעלם מ-`.terraform/`, מ-`*.tfstate`, מ-`*.tfstate.*`, מ-`*.tfvars` ומ-`*.tfvars.json`. ה-`state` מחזיק כל תכונה של המשאבים, והקובץ `terraform.tfvars` מחזיק כתובת אמיתית ושם `key pair` אמיתי. קובץ הדוגמה נגמר ב-`.example`, ולכן `git` שומר אותו. גם קובץ הנעילה נשמר ב-`git`, כי הוא חלק מהנעילה. בדקתי את כל זה עם `git check-ignore -v`.
@@ -147,13 +149,13 @@ terraform apply
 terraform output
 ```
 
-גם את `terraform destroy` לא הרצתי. הפקודה הזאת מוחקת הכול בחזרה.
+גם את `terraform destroy` לא הרצתי. הפקודה הזאת מוחקת את כל מה שנוצר.
 
 ## מה הייתי רוצה לשפר
 
-* כדאי לשמור את ה-`state` ב-`backend` מרוחק עם נעילה, למשל `bucket` של `S3`. במצב הנוכחי ה-`state` היה קובץ מקומי במחשב אחד, ושום דבר לא מונע משני אנשים להריץ `apply` באותו זמן.
-* כדאי לבנות `VPC` ו-`subnet` משלו. בחלק מהחשבונות אין `VPC` של ברירת מחדל, ואז הקוד הזה נכשל.
-* כתובת ה-`IP` הציבורית משתנה כשהשרת נעצר ועולה מחדש. כתובת `Elastic IP` תשמור עליה.
+* כדאי לשמור את ה-`state` ב-`backend` מרוחק עם נעילה, למשל `bucket` של `S3`. במצב הנוכחי ה-`state` יהיה קובץ מקומי במחשב אחד, ושום דבר לא ימנע משני אנשים להריץ `apply` באותו זמן.
+* כדאי שהקוד יבנה `VPC` קטן ו-`subnet` משלו. בחלק מהחשבונות אין `VPC` של ברירת מחדל, ואז הקוד הזה נכשל.
+* כתובת ה-`IP` הציבורית משתנה כשהשרת נעצר ועולה מחדש. עם `Elastic IP` הכתובת תישאר קבועה.
 * כדאי לבדוק את הכלל של `my_ip` ואת הפלטים עם `terraform test` ועם `provider` מדומה, כך ש-`Terraform` עצמו יבדוק אותם בלי `AWS`.
 * בקובץ הנעילה יש `checksum` מלא מסוג `h1` רק ל-`linux_amd64`, שם רץ ה-`init`. הרצת `init` על `Windows` או על `macOS` מוסיפה לו שורה. הפקודה `terraform providers lock` לפלטפורמות האלה תוסיף אותן מראש.
 * פורט האפליקציה פתוח לכולם ומדבר `HTTP` רגיל. כדאי לשים לפניו `load balancer` עם `TLS`.
