@@ -14,12 +14,14 @@
 - name: Read the new Docker repository index before the install
   ansible.builtin.meta: flush_handlers
 
-# The engine needs a privileged container to run, and systemd is not running
-# in a plain container.
+# The engine packages install in a plain container, but the engine cannot
+# start there and systemd is not running, so the engine is left out as a whole.
+# update_cache covers a rerun after a first run that stopped before the refresh.
 - name: Install the Docker engine
   ansible.builtin.apt:
     name: "{{ docker_packages }}"
     state: present
+    update_cache: true
   tags: [host_only]
 
 - name: Enable and start the Docker service

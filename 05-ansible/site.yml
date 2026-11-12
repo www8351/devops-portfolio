@@ -2,6 +2,15 @@
 - name: Prepare the server and run the app
   hosts: app
   become: true
+  # A missing image tag stops the run before anything on the host changes.
+  pre_tasks:
+    - name: Check that an image tag was given
+      ansible.builtin.assert:
+        that:
+          - app_image_tag is defined
+          - app_image_tag | string | length > 0
+        fail_msg: "Set app_image_tag, for example -e app_image_tag=<commit sha>"
+        quiet: true
   roles:
     - base
     - docker

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Gate for this folder. Runs inside a throwaway Ubuntu 24.04 container as root, with the repo
-# mounted read only. Installs Ansible in a venv, runs ansible-lint and a syntax check, then runs
+# mounted read only. Installs Ansible in a venv, runs ansible-lint and a syntax check, checks
+# that a run without app_image_tag stops at the assert before it changes anything, then runs
 # the playbook twice against the container itself with the host_only tasks skipped. Checks what
 # the first run changed, that the second run changed nothing, which tasks carry the tag, and the
 # inventory line from the README.
@@ -24,6 +25,19 @@ base_packages="ca-certificates curl python3-debian python3-requests ufw"
 docker_sources="/etc/apt/sources.list.d/docker.sources"
 docker_key="/etc/apt/keyrings/docker.asc"
 doc_ip="203.0.113.10"
+# No image is pushed and the test never runs one, so any fixed value does for the tag.
+test_image_tag="verify-test"
+tag_args=(-e "app_image_tag=${test_image_tag}")
+tag_fail_msg="Set app_image_tag, for example -e app_image_tag=<commit sha>"
+
+# The tasks without a tag, as ansible-playbook --list-tasks prints them. A pre_task has no role prefix.
+expected_ran="Check that an image tag was given
+base : Update the apt cache
+base : Install the base packages
+base : Create the service group
+base : Create the service user
+docker : Add the Docker apt repository
+docker : Read the new Docker repository index before the install"
 
 # The tasks that carry the host_only tag, as ansible-playbook --list-tasks prints them.
 expected_host_only="base : Allow SSH through the firewall
@@ -32,7 +46,6 @@ base : Deny incoming traffic by default
 base : Enable the firewall
 docker : Install the Docker engine
 docker : Enable and start the Docker service
-app : Check that an image tag was given
 app : Run the app container
 app : Wait until /health answers"
 
@@ -183,14 +196,36 @@ localhost ansible_connection=local ansible_become=false ansible_python_interpret
 EOF
 cat "$test_inventory"
 rc=0
-out="$(ansible-playbook -i "$test_inventory" site.yml --syntax-check 2>&1)" || rc=$?
+out="$(ansible-playbook -i "$test_inventory" site.yml "${tag_args[@]}" --syntax-check 2>&1)" || rc=$?
 echo "$out"
 expect_eq "syntax check exit code" "0" "$rc"
 grep -qxF "playbook: site.yml" <<<"$out" || fail "syntax check did not name the playbook"
 
-# f. First run, host_only tasks skipped.
-section "f. Run 1: ansible-playbook -i ${test_inventory} site.yml --skip-tags host_only"
-if ! ansible-playbook -i "$test_inventory" site.yml --skip-tags host_only 2>&1 \
+# f. Without app_image_tag the play must stop at the assert, before anything changes.
+section "f. Run without app_image_tag: ansible-playbook -i ${test_inventory} site.yml --skip-tags host_only"
+rc=0
+ansible-playbook -i "$test_inventory" site.yml --skip-tags host_only >"${log_dir}/run0.log" 2>&1 || rc=$?
+cat "${log_dir}/run0.log"
+expect_eq "exit code without app_image_tag" "2" "$rc"
+expect_eq "tasks started without app_image_tag" \
+  "TASK [Gathering Facts]
+TASK [Check that an image tag was given]" \
+  "$(grep -o '^TASK \[[^]]*\]' "${log_dir}/run0.log")"
+grep -qF -- "$tag_fail_msg" "${log_dir}/run0.log" || fail "the assert message [${tag_fail_msg}] was not printed"
+expect_eq "failed count without app_image_tag" "1" "$(recap_count "${log_dir}/run0.log" failed)"
+expect_eq "changed count without app_image_tag" "0" "$(recap_count "${log_dir}/run0.log" changed)"
+if getent passwd "$service_user" >/dev/null; then
+  fail "${service_user} exists after the run without app_image_tag"
+fi
+[ ! -e "$docker_sources" ] || fail "${docker_sources} exists after the run without app_image_tag"
+if dpkg-query -W -f="\${Status}" ufw 2>/dev/null | grep -q 'ok installed'; then
+  fail "ufw is installed after the run without app_image_tag"
+fi
+echo "checked: stopped at the assert with exit code 2; no ${service_user}, no ${docker_sources}, no ufw"
+
+# g. First run, host_only tasks skipped.
+section "g. Run 1: ansible-playbook -i ${test_inventory} site.yml ${tag_args[*]} --skip-tags host_only"
+if ! ansible-playbook -i "$test_inventory" site.yml "${tag_args[@]}" --skip-tags host_only 2>&1 \
   | tee "${log_dir}/run1.log"; then
   fail "run 1 failed"
 fi
@@ -199,7 +234,7 @@ expect_eq "run 1 unreachable count" "0" "$(recap_count "${log_dir}/run1.log" unr
 run1_changed="$(recap_count "${log_dir}/run1.log" changed)"
 [ "$run1_changed" -gt 0 ] || fail "run 1 changed nothing on a fresh container"
 
-section "f. What run 1 did in the container"
+section "g. What run 1 did in the container"
 for pkg in $base_packages; do
   expect_eq "dpkg status of ${pkg}" "install ok installed" \
     "$(dpkg-query -W -f="\${Status}" "$pkg" 2>/dev/null || true)"
@@ -251,9 +286,9 @@ if grep -q -- '--dport' /etc/ufw/user.rules; then
 fi
 echo "not done, as expected: docker-ce not installed, ufw not enabled and without rules"
 
-# g. Second run: nothing may change.
-section "g. Run 2: the same command again"
-if ! ansible-playbook -i "$test_inventory" site.yml --skip-tags host_only 2>&1 \
+# h. Second run: nothing may change.
+section "h. Run 2: the same command again"
+if ! ansible-playbook -i "$test_inventory" site.yml "${tag_args[@]}" --skip-tags host_only 2>&1 \
   | tee "${log_dir}/run2.log"; then
   fail "run 2 failed"
 fi
@@ -262,25 +297,28 @@ expect_eq "run 2 failed count" "0" "$(recap_count "${log_dir}/run2.log" failed)"
 expect_eq "run 2 unreachable count" "0" "$(recap_count "${log_dir}/run2.log" unreachable)"
 echo "checked: run 2 reports changed=0 failed=0"
 
-# h. Which tasks ran and which were skipped.
-section "h. Tasks that ran in the container: --list-tasks --skip-tags host_only"
-ansible-playbook -i "$test_inventory" site.yml --list-tasks --skip-tags host_only \
+# i. Which tasks ran and which were skipped.
+section "i. Tasks that ran in the container: --list-tasks --skip-tags host_only"
+ansible-playbook -i "$test_inventory" site.yml "${tag_args[@]}" --list-tasks --skip-tags host_only \
   | tee "${log_dir}/list-ran.log" || fail "--list-tasks --skip-tags host_only failed"
 ran_tasks="$(listed_tasks "${log_dir}/list-ran.log")"
 [ -n "$ran_tasks" ] || fail "no tasks listed under --skip-tags host_only"
 expect_eq "tasks with a tag under --skip-tags host_only" "" "$(awk -F '\t' '$2 != "TAGS: []"' <<<"$ran_tasks")"
+expect_eq "tasks listed under --skip-tags host_only" \
+  "$(awk '{ print $0 "\tTAGS: []" }' <<<"$expected_ran")" "$ran_tasks"
+echo "checked: exactly the expected tasks ran, none of them tagged"
 
-section "h. Tasks skipped in the container: --list-tasks --tags host_only"
-ansible-playbook -i "$test_inventory" site.yml --list-tasks --tags host_only \
+section "i. Tasks skipped in the container: --list-tasks --tags host_only"
+ansible-playbook -i "$test_inventory" site.yml "${tag_args[@]}" --list-tasks --tags host_only \
   | tee "${log_dir}/list-skipped.log" || fail "--list-tasks --tags host_only failed"
 expect_eq "tasks listed under --tags host_only" \
   "$(awk '{ print $0 "\tTAGS: [host_only]" }' <<<"$expected_host_only")" \
   "$(listed_tasks "${log_dir}/list-skipped.log")"
 echo "checked: exactly the expected tasks carry host_only, and no other tag"
 
-# i. The line from the README that writes inventory.ini. A stand-in for terraform prints
+# j. The line from the README that writes inventory.ini. A stand-in for terraform prints
 # a documentation address, because the real output needs an applied server.
-section "i. The inventory line from README.md"
+section "j. The inventory line from README.md"
 sed_lines="$(grep -F 'sed "s/APP_PUBLIC_IP/' README.md || true)"
 expect_eq "number of inventory lines in README.md (English and Hebrew)" "2" "$(grep -c . <<<"$sed_lines")"
 sed_line="$(head -n 1 <<<"$sed_lines")"
@@ -320,6 +358,7 @@ echo "ansible-inventory: group app has ${inventory_summary}"
 section "Results"
 echo "ansible-lint: 0 failures, 0 warnings"
 echo "syntax check: passed"
+echo "run without app_image_tag: stopped at the assert, nothing changed"
 echo "run 1: changed=${run1_changed} failed=0"
 echo "run 2: changed=0 failed=0"
 echo "skipped in the container (host_only):"

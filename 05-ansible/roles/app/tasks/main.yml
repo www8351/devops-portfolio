@@ -1,14 +1,6 @@
 ---
-# Every task here needs a running Docker engine and a pushed image.
-- name: Check that an image tag was given
-  ansible.builtin.assert:
-    that:
-      - app_image_tag is defined
-      - app_image_tag | string | length > 0
-    fail_msg: "Set app_image_tag, for example -e app_image_tag=<commit sha>"
-    quiet: true
-  tags: [host_only]
-
+# Both tasks need a running Docker engine and a pushed image. The play checks
+# app_image_tag in its pre_tasks.
 - name: Run the app container
   community.docker.docker_container:
     name: "{{ app_container_name }}"

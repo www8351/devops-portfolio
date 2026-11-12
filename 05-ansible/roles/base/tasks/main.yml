@@ -28,11 +28,12 @@
     state: present
 
 # The firewall needs the kernel's netfilter, which a plain container does not
-# give. SSH is allowed before the firewall is enabled.
+# give. SSH is allowed before the firewall is enabled, on the port Ansible
+# connects on.
 - name: Allow SSH through the firewall
   community.general.ufw:
     rule: allow
-    port: "22"
+    port: "{{ ansible_port | default(22) }}"
     proto: tcp
   tags: [host_only]
 
