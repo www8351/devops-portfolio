@@ -7,7 +7,7 @@ A GitHub Actions workflow that checks the app, runs its tests and builds its ima
 * The workflow file is `.github/workflows/ci.yml`. GitHub reads workflows only from that folder, so `03-ci-cd` holds just this readme.
 * It runs on every push to `main` and on every pull request.
 * It has three jobs. `lint` runs ruff, `test` runs pytest and `build` runs `docker build`. `lint` and `test` run side by side. `build` waits for both and starts only if both passed.
-* `build` builds the image from `02-docker/Dockerfile` on every run. Only on a push to `main` does it log in to GHCR and push the image as `ghcr.io/www8351/devops-portfolio:<commit SHA>`. The name is the repository name in lowercase, because image names must be lowercase. On a pull request it builds the image and stops there.
+* `build` builds the image from `02-docker/Dockerfile` on every run. Only on a push to `main` does it log in to GHCR and push the image as `ghcr.io/www8351/devops-portfolio:<commit sha>`. The name is the repository name in lowercase, because image names must be lowercase. On a pull request it builds the image and stops there.
 
 ## Why it is built this way
 
@@ -24,7 +24,8 @@ A GitHub Actions workflow that checks the app, runs its tests and builds its ima
 * The ruff steps run from `app/`, the same folder pytest runs in. From there ruff sees `main.py` as the project's own code and accepts the import order in the tests. Run from the repo root, ruff 0.17.4 treats `main` as a third party package and asks for a different order.
 * The `test` job caches pip downloads, keyed on `app/requirements-dev.txt`. When that file changes, the key changes.
 * The jobs run on `ubuntu-24.04`, not `ubuntu-latest`, so the runner image does not change under the workflow when the label moves.
-* The `concurrency` setting keeps one run per branch or pull request. A new push cancels the run still going for the same ref, so no runner time goes to a commit that is already old.
+* Each job has a time limit in `timeout-minutes`, 10 minutes for `lint` and `test` and 15 for `build`, so a job that hangs stops long before the default limit of six hours.
+* The `concurrency` setting lets only one run go at a time per branch or pull request. On a pull request a new push cancels the run still going, so no runner time goes to a commit that is already old. On `main` a run that has started is left to finish, so a newer push does not cut it off in the middle of the image push.
 
 ## How to run
 
@@ -100,7 +101,7 @@ docker image rm ghcr.io/www8351/devops-portfolio:aa8ea2241272960df5d46c0ffc971db
 * Run the built image inside the `build` job and call `/health` and `/version` before the push. Right now an image that builds but does not start would still be pushed.
 * Scan the image for known vulnerabilities before the push, and sign it with a provenance attestation, so whoever pulls it can check where it came from.
 * Keep the Docker layer cache between runs. Each run builds from scratch now and pulls the base image again.
-* `cancel-in-progress` also applies to `main`. Two quick pushes to `main` cancel the first run, and the first commit never gets an image. On `main` I would let runs finish and cancel only on pull requests.
+* A waiting run on `main` can still be cancelled. GitHub keeps one running and one waiting run per group, and a newer waiting run takes the place of the older one. After three quick pushes the middle commit can end up without an image. A separate group for each commit on `main` would stop that.
 * `setup-python` takes whatever 3.14 patch it finds, while the image pins 3.14.10. The tests can run on a different patch than the image.
 * Run actionlint as a job in the workflow itself, so a broken workflow file shows up in the pull request.
 * Let a bot open a pull request when a new action release or ruff version comes out, so the pins do not get old.
@@ -113,19 +114,19 @@ docker image rm ghcr.io/www8351/devops-portfolio:aa8ea2241272960df5d46c0ffc971db
 
 זה `workflow` של `GitHub Actions` שבודק את האפליקציה, מריץ את הבדיקות שלה ובונה את האימג' שלה בכל שינוי. בדחיפה ל-`main` הוא גם דוחף את האימג' ל-`GitHub Container Registry`, או בקיצור `GHCR`.
 
-* הקובץ נמצא ב-`.github/workflows/ci.yml`. המערכת `GitHub` קוראת `workflows` רק מהתיקייה הזאת, ולכן בתיקייה `03-ci-cd` יש רק את קובץ ההסבר הזה.
+* הקובץ נמצא ב-`.github/workflows/ci.yml`. המערכת `GitHub` קוראת `workflows` רק מהתיקייה הזאת, ולכן בתיקייה `03-ci-cd` יש רק את קובץ ה-`README` הזה.
 * הוא רץ בכל דחיפה ל-`main` ובכל `pull request`.
 * יש בו שלוש משימות. המשימה `lint` מריצה את `ruff`, המשימה `test` מריצה את `pytest` והמשימה `build` מריצה `docker build`. המשימות `lint` ו-`test` רצות במקביל. המשימה `build` מחכה לשתיהן ומתחילה רק אם שתיהן עברו.
-* המשימה `build` בונה את האימג' מ-`02-docker/Dockerfile` בכל ריצה. רק בדחיפה ל-`main` היא מתחברת ל-`GHCR` ודוחפת את האימג' בשם `ghcr.io/www8351/devops-portfolio:<commit SHA>`. השם הוא שם הריפו באותיות קטנות, כי שמות של אימג'ים חייבים להיות באותיות קטנות. ב-`pull request` היא בונה את האימג' ועוצרת שם.
+* המשימה `build` בונה את האימג' מ-`02-docker/Dockerfile` בכל ריצה. רק בדחיפה ל-`main` היא מתחברת ל-`GHCR` ודוחפת את האימג' בשם `ghcr.io/www8351/devops-portfolio:<commit sha>`. השם הוא שם הריפו באותיות קטנות, כי שמות של אימג'ים חייבים להיות באותיות קטנות. ב-`pull request` היא בונה את האימג' ועוצרת שם.
 
 ## למה זה בנוי ככה
 
 * תג האימג' הוא ה-`SHA` המלא של ה-`commit`. הוא מצביע על `commit` אחד בדיוק, כך שאפשר תמיד לדעת מאיזה קוד נבנה כל אימג'. הוא אף פעם לא זז, בניגוד לתג כמו `latest`, ושתי דחיפות אף פעם לא דורסות זו את זו.
 * אותו `SHA` נכנס לארגומנט הבנייה `APP_VERSION`. הקובץ `Dockerfile` הופך אותו למשתנה הסביבה ש-`/version` קורא, כך שקונטיינר שרץ מדווח מאיזה `commit` הוא בא. התג והגרסה מגיעים מאותו ערך ולא יכולים להתפצל. בדקתי את זה מקומית: אימג' שנבנה עם ה-`SHA` של ה-`commit` הנוכחי ענה ב-`/version` עם אותו `SHA`.
-* שתי הפעולות (`actions`) נעולות ל-`SHA` מלא של `commit`, באורך 40 תווים, עם הגרסה בהערה (`actions/checkout` בגרסה `v7.0.1`, ו-`actions/setup-python` בגרסה `v7.1.0`). מי ששולט בריפו של פעולה יכול להזיז תג כמו `v7` לקוד אחר. לעומת זאת, `SHA` של `commit` לא יכול לזוז. ההערה שומרת על השורה קריאה, ועדכון נראה כשינוי קטן.
+* שתי הפעולות (`actions`) נעולות ל-`SHA` מלא של `commit`, באורך 40 תווים, עם הגרסה בהערה (`actions/checkout` בגרסה `v7.0.1`, ו-`actions/setup-python` בגרסה `v7.1.0`). מי ששולט בריפו של פעולה יכול להזיז תג כמו `v7` לקוד אחר. לעומת זאת, `SHA` של `commit` לא יכול לזוז. בזכות ההערה השורה נשארת קריאה, ועדכון נראה כשינוי קטן.
 * אלה שתי הפעולות היחידות של צד שלישי. הבנייה, ההתחברות והדחיפה הן פקודות `docker` רגילות, לא פעולות. כך פחות קוד חיצוני רץ ליד ה-`token`.
 * הרשאות ה-`token` של ה-`workflow` הן קריאה בלבד כברירת מחדל (`contents: read`). רק המשימה `build` מבקשת `packages: write`, כי רק היא דוחפת. המשימות `lint` ו-`test` מריצות קוד מתוך ה-`pull request`, והן לא מקבלות שום הרשאת כתיבה.
-* שלבי ההתחברות והדחיפה רצים רק כשהאירוע הוא `push` וה-`ref` הוא `refs/heads/main`. ב-`pull request` שני השלבים מדולגים, כך ש-`pull request` אף פעם לא דוחף אימג'.
+* שלבי ההתחברות והדחיפה רצים רק כשהאירוע הוא `push` וה-`ref` הוא `refs/heads/main`. ב-`pull request` מדלגים על שני השלבים, כך ש-`pull request` אף פעם לא דוחף אימג'.
 * הערך של ה-`token` מגיע ל-`docker login` דרך משתנה סביבה ודרך `--password-stdin`. הוא אף פעם לא חלק משורת הפקודה, ולכן הוא לא מופיע בסקריפט ולא ברשימת התהליכים.
 * כל שלב `checkout` מגדיר `persist-credentials: false`. אף משימה לא דוחפת ל-`git`, ולכן אין סיבה שה-`token` יישאר בהגדרות של `git`, שם שלבים מאוחרים יותר יכולים לקרוא אותו.
 * המשימה `build` מגדירה `DOCKER_BUILDKIT: "1"`. קובץ ההתעלמות `02-docker/Dockerfile.dockerignore` נקרא על שם ה-`Dockerfile`, ורק `BuildKit` קורא קובץ בשם כזה. בלי `BuildKit` כל הריפו היה נכנס להקשר הבנייה. המשתנה רושם את התלות הזאת בתוך ה-`workflow`.
@@ -133,7 +134,8 @@ docker image rm ghcr.io/www8351/devops-portfolio:aa8ea2241272960df5d46c0ffc971db
 * שלבי `ruff` רצים מתוך `app/`, אותה תיקייה ש-`pytest` רץ בה. משם `ruff` רואה את `main.py` כקוד של הפרויקט עצמו ומקבל את סדר ה-`import` בבדיקות. כשמריצים אותו משורש הריפו, `ruff 0.17.4` מתייחס ל-`main` כחבילה של צד שלישי ומבקש סדר אחר.
 * המשימה `test` שומרת `cache` של הורדות `pip`, עם מפתח שמחושב מ-`app/requirements-dev.txt`. כשהקובץ משתנה, המפתח משתנה.
 * המשימות רצות על `ubuntu-24.04` ולא על `ubuntu-latest`, כך שאימג' ה-`runner` לא מתחלף מתחת ל-`workflow` כשהתווית זזה.
-* ההגדרה `concurrency` שומרת על ריצה אחת לכל ענף או `pull request`. דחיפה חדשה מבטלת את הריצה שעוד רצה על אותו `ref`, כך שזמן ריצה לא הולך על `commit` שכבר ישן.
+* לכל משימה יש מגבלת זמן ב-`timeout-minutes`, עשר דקות ל-`lint` ול-`test` ורבע שעה ל-`build`, כך שמשימה שנתקעת נעצרת הרבה לפני מגבלת ברירת המחדל של שש שעות.
+* ההגדרה `concurrency` מאפשרת רק ריצה אחת בכל פעם לכל ענף או `pull request`. ב-`pull request` דחיפה חדשה מבטלת את הריצה שעוד רצה, כך שזמן ריצה לא הולך על `commit` שכבר ישן. ב-`main` ריצה שכבר התחילה ממשיכה עד הסוף, כך שדחיפה חדשה יותר לא קוטעת אותה באמצע הדחיפה של האימג'.
 
 ## איך מריצים
 
@@ -206,10 +208,10 @@ docker image rm ghcr.io/www8351/devops-portfolio:aa8ea2241272960df5d46c0ffc971db
 
 ## מה הייתי רוצה לשפר
 
-* כדאי להריץ את האימג' שנבנה בתוך המשימה `build` ולפנות ל-`/health` ול-`/version` לפני הדחיפה. כרגע אימג' שנבנה אבל לא עולה עדיין יידחף.
+* כדאי להריץ את האימג' שנבנה בתוך המשימה `build` ולפנות ל-`/health` ול-`/version` לפני הדחיפה. כרגע גם אימג' שנבנה אבל לא עולה יידחף.
 * כדאי לסרוק את האימג' לחולשות ידועות לפני הדחיפה, ולחתום עליו עם `attestation` של מקור, כדי שמי שמושך אותו יוכל לבדוק מאיפה הוא בא.
 * כדאי לשמור את ה-`cache` של שכבות `Docker` בין ריצות. כרגע כל ריצה בונה מאפס ומושכת שוב את אימג' הבסיס.
-* ההגדרה `cancel-in-progress` חלה גם על `main`. שתי דחיפות מהירות ל-`main` מבטלות את הריצה הראשונה, וה-`commit` הראשון לא מקבל אימג'. ב-`main` עדיף לתת לריצות להסתיים, ולבטל רק ב-`pull request`.
+* ריצה שמחכה בתור ב-`main` עדיין יכולה להתבטל. המערכת `GitHub` שומרת בכל קבוצה ריצה אחת שרצה וריצה אחת שמחכה, וריצה חדשה שמחכה תופסת את המקום של הריצה הישנה יותר. אחרי שלוש דחיפות מהירות ה-`commit` האמצעי יכול להישאר בלי אימג'. קבוצה נפרדת לכל `commit` ב-`main` הייתה מונעת את זה.
 * הפעולה `setup-python` לוקחת את גרסת ה-`3.14` שהיא מוצאת, בזמן שהאימג' נעול ל-`3.14.10`. הבדיקות יכולות לרוץ על גרסת תיקון אחרת מזו של האימג'.
 * כדאי להריץ את `actionlint` כמשימה בתוך ה-`workflow` עצמו, כך שקובץ `workflow` שבור יתגלה כבר ב-`pull request`.
 * כדאי שבוט יפתח `pull request` כשיוצאת גרסה חדשה של פעולה או של `ruff`, כדי שהנעילות לא יתיישנו.
