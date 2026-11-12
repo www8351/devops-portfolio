@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End to end test for this folder. Runs inside a throwaway Ubuntu 24.04 container as root,
-# with the repo mounted read only. Installs the app with setup.sh (twice), starts it as the
-# service user, then runs healthcheck.sh and log-report.sh once healthy and once stopped.
+# with the repo mounted read only. Checks that setup.sh refuses bad values, installs the app
+# with setup.sh (twice), starts it as the service user, then runs healthcheck.sh and
+# log-report.sh once healthy and once stopped.
 set -euo pipefail
 
 prog="$(basename -- "$0")"
@@ -94,7 +95,25 @@ if ! { apt-get update -qq && apt-get install -y -qq --no-install-recommends pyth
 fi
 echo "$(python3 --version), $(curl --version | awk 'NR == 1 { print $1, $2 }')"
 
-# b. setup.sh with defaults, then again to show it is safe to rerun.
+# b. Bad values first: setup.sh must refuse them before it changes anything.
+section "b. setup.sh with bad -u and -d values"
+expect_setup_usage_error() {
+  # expect_setup_usage_error OPTION VALUE
+  local rc=0 err
+  err="$(bash "${script_dir}/setup.sh" "$1" "$2" 2>&1 >/dev/null)" || rc=$?
+  echo "setup.sh $1 '$2': exit ${rc}, ${err%%$'\n'*}"
+  expect_eq "setup.sh exit code for $1 '$2'" "2" "$rc"
+}
+passwd_sum="$(sha256sum /etc/passwd)"
+expect_setup_usage_error -u "Bad User"
+expect_setup_usage_error -d "opt/portfolio-app"
+expect_eq "/etc/passwd after the rejected runs" "$passwd_sum" "$(sha256sum /etc/passwd)"
+for p in "$install_dir" /var/log/portfolio-app "$unit_file"; do
+  [ ! -e "$p" ] || fail "${p} exists after a rejected run"
+done
+echo "checked: both exit 2, no user, folder or unit file created"
+
+# Then setup.sh with defaults, and again to show it is safe to rerun.
 section "b. setup.sh, first run"
 if ! bash "${script_dir}/setup.sh" 2>&1 | tee "${work_dir}/setup1.log"; then
   fail "setup.sh first run failed"
@@ -214,6 +233,20 @@ ts2="${line2%% *}"
 [[ $ts2 =~ $ts_re ]] || fail "second log line has no UTC timestamp: ${line2}"
 expect_eq "second log line" "${ts2} FAIL http=000 url=${health_url} reason=\"could not connect\"" "$line2"
 expect_eq "healthcheck.sh stderr while stopped" "$line2" "$out"
+
+# A URL that starts with "-" must reach curl as a URL, not as a curl option.
+# It goes to its own log, so the main log keeps exactly two checks.
+section "f. healthcheck.sh with the URL -x"
+dash_log="${work_dir}/dash.log"
+rc=0
+out="$(bash "${script_dir}/healthcheck.sh" -u "-x" -l "$dash_log" 2>&1)" || rc=$?
+echo "exit code: ${rc}"
+echo "stderr: ${out}"
+expect_eq "healthcheck.sh exit code for the URL -x" "1" "$rc"
+expect_eq "log lines for the URL -x" "1" "$(wc -l <"$dash_log")"
+dash_line="$(cat "$dash_log")"
+[[ ${dash_line%% *} =~ $ts_re ]] || fail "log line for the URL -x has no UTC timestamp: ${dash_line}"
+expect_eq "log line for the URL -x" "${dash_line%% *} FAIL http=000 url=-x reason=\"could not resolve host\"" "$dash_line"
 
 # g. Report.
 section "g. log-report.sh"

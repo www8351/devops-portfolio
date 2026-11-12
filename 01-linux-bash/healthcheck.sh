@@ -59,8 +59,9 @@ if ! command -v curl >/dev/null 2>&1; then
 else
   # A failed request must not stop the script before the log line is written,
   # so the curl exit code is captured instead of tripping set -e.
+  # --url keeps a value that starts with "-" from being read as a curl option.
   curl_rc=0
-  response="$(curl --silent --max-time "$timeout" --write-out '\n%{http_code}' "$url" 2>/dev/null)" || curl_rc=$?
+  response="$(curl --silent --max-time "$timeout" --write-out '\n%{http_code}' --url "$url" 2>/dev/null)" || curl_rc=$?
   http_code="${response##*$'\n'}"
   body="${response%$'\n'*}"
   [[ $http_code =~ ^[0-9]{3}$ ]] || http_code="000"

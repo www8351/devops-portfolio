@@ -24,8 +24,10 @@ Safe to run more than once.
 
   -s DIR   app source dir with main.py and requirements.txt
            (default: ../app next to this script)
-  -d DIR   install dir (default: /opt/portfolio-app)
-  -u NAME  service user (default: appuser)
+  -d DIR   install dir, an absolute path of letters, digits, . _ - and /
+           (default: /opt/portfolio-app)
+  -u NAME  service user, a plain Linux user name such as appuser
+           (default: appuser)
   -p PORT  port the app listens on (default: 8000)
   -h       show this help
 
@@ -65,10 +67,14 @@ shift $((OPTIND - 1))
 if ! [[ $port =~ ^[1-9][0-9]{0,4}$ ]] || [ "$port" -gt 65535 ]; then
   usage_error "port must be a number from 1 to 65535, got: ${port}"
 fi
-if [[ $install_dir != /* || $install_dir =~ [[:space:]] ]]; then
-  usage_error "install dir must be an absolute path without spaces, got: ${install_dir}"
+# Both values end up in the unit file, so only plain names are accepted.
+# The ranges below are ASCII only (bash globasciiranges, on by default since bash 5.0).
+if [[ ${#service_user} -gt 32 || $service_user != [a-z_]* || $service_user == *[!a-z0-9_-]* ]]; then
+  usage_error "service user must start with a-z or _, then use only a-z, 0-9, _ or -, at most 32 characters, got: ${service_user}"
 fi
-[ -n "$service_user" ] || usage_error "service user must not be empty"
+if [[ $install_dir != /?* || $install_dir == *[!A-Za-z0-9._/-]* ]]; then
+  usage_error "install dir must be an absolute path made of letters, digits, . _ - and /, got: ${install_dir}"
+fi
 
 venv_dir="${install_dir}/venv"
 
@@ -87,33 +93,38 @@ if id -u "$service_user" >/dev/null 2>&1; then
   step "User ${service_user} already exists"
 else
   step "Creating system user ${service_user}"
-  useradd --system --no-create-home --shell /usr/sbin/nologin "$service_user"
+  useradd --system --no-create-home --shell /usr/sbin/nologin "$service_user" \
+    || die "could not create user ${service_user}"
 fi
-service_group="$(id -gn "$service_user")"
+service_group="$(id -gn "$service_user")" || die "could not read the group of ${service_user}"
 
 # c. App files. Owned by root so the service user cannot change its own code.
 step "Copying main.py and requirements.txt to ${install_dir}"
-install -d -m 0755 "$install_dir"
-install -m 0644 "${src_dir}/main.py" "${src_dir}/requirements.txt" "$install_dir/"
+install -d -m 0755 "$install_dir" || die "could not create ${install_dir}"
+install -m 0644 "${src_dir}/main.py" "${src_dir}/requirements.txt" "$install_dir/" \
+  || die "could not copy the app files to ${install_dir}"
 
 # d. Virtual environment and dependencies.
-if [ -x "${venv_dir}/bin/python" ]; then
+# The venv counts as usable only when pip is there. A first run that stopped half way
+# can leave a venv without pip, so that one is built again from scratch.
+if [ -x "${venv_dir}/bin/pip" ]; then
   step "Venv ${venv_dir} already exists"
 else
   step "Creating venv ${venv_dir}"
-  python3 -m venv "$venv_dir"
+  python3 -m venv --clear "$venv_dir" || die "could not create the venv ${venv_dir}"
 fi
 step "Installing requirements into the venv"
 "${venv_dir}/bin/pip" install --quiet --no-cache-dir --disable-pip-version-check \
-  -r "${install_dir}/requirements.txt"
+  -r "${install_dir}/requirements.txt" || die "pip install into ${venv_dir} failed"
 
 # e. Log folder for healthcheck.sh.
 step "Making sure ${log_dir} exists, owned by ${service_user}"
-install -d -m 0755 -o "$service_user" -g "$service_group" "$log_dir"
+install -d -m 0755 -o "$service_user" -g "$service_group" "$log_dir" \
+  || die "could not create ${log_dir}"
 
 # f. systemd unit file.
 step "Writing ${unit_file}"
-cat >"$unit_file" <<EOF
+cat >"$unit_file" <<EOF || die "could not write ${unit_file}"
 [Unit]
 Description=Portfolio app (FastAPI on uvicorn)
 After=network.target
@@ -132,13 +143,13 @@ ProtectSystem=full
 [Install]
 WantedBy=multi-user.target
 EOF
-chmod 0644 "$unit_file"
+chmod 0644 "$unit_file" || die "could not set the mode of ${unit_file}"
 
 # g. Start it, but only where systemd is actually running.
 if [ -d /run/systemd/system ]; then
   step "Reloading systemd and starting ${unit_name}"
-  systemctl daemon-reload
-  systemctl enable --now "$unit_name"
+  systemctl daemon-reload || die "systemctl daemon-reload failed"
+  systemctl enable --now "$unit_name" || die "could not enable and start ${unit_name}"
 else
   step "systemd is not running here: unit file written to ${unit_file}, service not started"
 fi
