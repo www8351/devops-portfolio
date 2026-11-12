@@ -12,20 +12,12 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 3. 02-docker/
-
-```
-Issue:  Step 3. Build a multi-stage Dockerfile (pinned base image, non-root user, HEALTHCHECK, runtime dependencies only, APP_VERSION as a build arg), .dockerignore, docker-compose.yml. Folder readme per the readme rules.
-Action: Gate: hadolint clean. Image builds. Container runs, both endpoints answer, the process is not root, health status becomes healthy. Report the image size. Started 2026-11-12 06:53 (+0200).
-Status: IN PROGRESS
-```
-
 ### Step 4. 03-ci-cd/
 
 ```
 Issue:  Step 4. Build .github/workflows/ci.yml with jobs lint (ruff), test (pytest), build (docker build). Push to GHCR only on main, tagged with the commit SHA, which is also passed as APP_VERSION. 03-ci-cd/README.md explains the pipeline, per the readme rules.
-Action: Gate: actionlint clean. Every command the jobs run also passes locally. The workflow has not run on GitHub. That fact goes in the final report, not in the readme.
-Status: OPEN
+Action: Gate: actionlint clean. Every command the jobs run also passes locally. The workflow has not run on GitHub. That fact goes in the final report, not in the readme. Started 2026-11-12 07:12 (+0200).
+Status: IN PROGRESS
 ```
 
 ### Step 5. 04-terraform/
@@ -85,12 +77,58 @@ Status: OPEN
 ```
 
 ```
+Issue:  Review notes deferred from step 3, all minor: an empty APP_VERSION build arg makes /version return an empty string, main.py is mode 0755 in an image built from a Windows checkout, the compose file publishes port 8000 on all host interfaces, the ignore file is read by BuildKit only.
+Action: Triage in the final review of the whole branch. None of them breaks the gate.
+Status: OPEN
+```
+
+```
 Issue:  Review note deferred from step 1: only the four named packages are pinned. Their dependencies (starlette, pydantic and others) float, so a later install can differ from the tested one.
 Action: Possible later fix: a constraints file. Not done, the spec pins the named packages only.
 Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 3. 02-docker/
+
+```
+Issue:  Step 3. 02-docker/. Start 06:53, end 07:10 (+0200).
+Action: Built Dockerfile (two stages, base python:3.14.10-slim-trixie pinned by tag and digest, numeric user 10001, HEALTHCHECK with Python, APP_VERSION build arg), Dockerfile.dockerignore, docker-compose.yml and the folder readme. A separate review approved the build, reran every gate and found only minor notes. Tool image: hadolint/hadolint:v2.15.1. Image size as shown by docker image ls: 222MB disk usage, 53.3MB content size. Commits 80b63dc, 4be1e65.
+Status: DONE
+```
+
+Gate evidence, code at 4be1e65:
+
+```
+$ docker run --rm -v "${PWD}/02-docker/Dockerfile:/Dockerfile:ro" hadolint/hadolint:v2.15.1 hadolint /Dockerfile
+(no output)                                                                  exit code 0
+$ docker build --progress=plain -f 02-docker/Dockerfile --build-arg APP_VERSION=0.1.0 -t portfolio-app:0.1.0 .
+#3 transferring context: 95B done
+#12 naming to docker.io/library/portfolio-app:0.1.0 done                     exit code 0
+$ docker run -d --name pf-app-ctl -p 8000:8000 portfolio-app:0.1.0
+$ curl -s http://127.0.0.1:8000/health
+{"status":"ok"} [http 200]
+$ curl -s http://127.0.0.1:8000/version
+{"version":"0.1.0"} [http 200]
+$ docker exec pf-app-ctl id
+uid=10001(appuser) gid=10001(appuser) groups=10001(appuser)
+$ docker inspect --format '{{.Config.User}}' pf-app-ctl
+10001:10001
+$ docker inspect --format '{{.State.Health.Status}}' pf-app-ctl
+healthy
+$ docker run --rm portfolio-app:0.1.0 python -m pip list
+fastapi 0.162.5, uvicorn 0.54.0 present. pytest absent. httpx absent.
+$ docker image ls portfolio-app
+portfolio-app:0.1.0   DISK USAGE 222MB   CONTENT SIZE 53.3MB
+$ docker compose -f 02-docker/docker-compose.yml up -d --build      (with APP_VERSION=0.1.0-compose)
+service healthy. /health {"status":"ok"} [http 200]. /version {"version":"0.1.0-compose"} [http 200].
+readonly=true capdrop=[ALL] secopt=[no-new-privileges:true]
+$ docker compose -f 02-docker/docker-compose.yml exec -T app python -c "open('/tmp/x','w')"
+OSError: [Errno 30] Read-only file system: '/tmp/x'
+$ docker compose -f 02-docker/docker-compose.yml down
+containers left: 0
+```
 
 ### 2026-11-12 Step 2. 01-linux-bash/
 
@@ -365,5 +403,13 @@ Status: REVISIT
 ```
 Issue:  The spec for 01-linux-bash names the scripts and their jobs but not their defaults, formats or edge behavior.
 Action: Defaults: install dir /opt/portfolio-app, service user appuser, port 8000, unit portfolio-app.service, log /var/log/portfolio-app/health.log. uvicorn binds 0.0.0.0 because a server must be reachable, and the readme says so. Log line: UTC timestamp, OK or FAIL, http code, url, reason. Exit codes 0, 1, 2. Review notes left as they are: healthcheck.sh exits 1 when it cannot write the log, the body check accepts any body that reports status ok, a second setup.sh run does not restart a running service (listed in the readme). Decided alone during the build run.
+Status: REVISIT
+```
+
+### Docker build layout
+
+```
+Issue:  The spec asks for a .dockerignore in 02-docker, but the image needs files from app/, so the build context must be the repo root. Docker reads an ignore file only from the context root or, with BuildKit, from a file named after the Dockerfile.
+Action: Build context is the repo root. The ignore file is 02-docker/Dockerfile.dockerignore, an allow list for app/main.py and app/requirements.txt. Measured context: 448 bytes on the first build, 95 bytes on later builds. Cost if wrong: rename and move one file. Also decided: Debian slim base instead of a smaller one, health check with Python instead of installing curl, version arg placed last to keep the layer cache, compose adds a read only root filesystem, dropped capabilities and no-new-privileges. One line was added to .gitattributes to force LF for *.dockerignore. Decided alone during the build run.
 Status: REVISIT
 ```
