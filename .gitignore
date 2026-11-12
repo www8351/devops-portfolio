@@ -1,0 +1,31 @@
+﻿# ccode-managed
+# MD files stay local except README, versioned docs, and the governance record
+*.md
+!README.md
+!docs/**/*.md
+!LEDGER.md
+
+# Build artifacts
+*.ex5
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+secrets.*
+credentials.*
+
+# Junk
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*.log
+
+# Owner profile backups of CLAUDE.md, local config residue
+CLAUDE.md.bak*
+.claude/worktrees/
+.claude/settings.local.json
