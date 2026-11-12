@@ -10,14 +10,14 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 ## ISSUES (current state)
 
-Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
+The build run, steps 0 to 7, is finished. Every step is in ACTIONS with its times and its gate evidence. What is left is listed here, the next action first.
 
-### Final review of the whole branch
+### Next action
 
 ```
-Issue:  All seven build steps passed their gates. Still open before the run ends: one review of the whole branch, one fix wave for its findings and for the deferred review notes below, one scoped second review, and a rerun of the gate of every folder the fix wave touches.
-Action: Started 2026-11-12 09:50 (+0200). Carried in from the step 7 review: a rolling restart loses a few requests (about 4 of 750 in the review probe) because the pod has no preStop wait, and the Kubernetes readme reads smoother than that. Resume here if the run stops: read the deferred notes, apply the fixes, rerun the gates.
-Status: IN PROGRESS
+Issue:  The work is on branch worktree-step-1-app and is not on main yet. Nothing was pushed.
+Action: The owner merges. From the main checkout: git merge -X theirs worktree-step-1-app. The entry on main below says why it is not a fast forward and which commands were tested.
+Status: OPEN
 ```
 
 ### Other open items
@@ -47,8 +47,8 @@ Status: OPEN
 ```
 
 ```
-Issue:  The .gitignore copied from the main checkout names local tooling files in its last block (lines 28 to 31) and carries a byte order mark. The lines were left untouched as the owner asked.
-Action: Owner decides whether to edit those lines before the repo is published.
+Issue:  The tracked .gitignore names local tooling files (lines 1, 2 and 6, and lines 28 to 31) and starts with a byte order mark. The lines come from the owner's own file. They are already public on origin/main since the owner's commit a9cbb5a. The build run left them untouched as the owner asked.
+Action: Owner decides whether to edit those lines.
 Status: OPEN
 ```
 
@@ -65,8 +65,20 @@ Status: OPEN
 ```
 
 ```
-Issue:  Review notes deferred from step 7, all minor: the diagram edge from the registry to Terraform reads wrong, the cluster create time in the readme is a first run with image pulls, two readme claims have no command a reader can repeat, the namespace sets only the enforce label, the pods have no spread rule.
-Action: Triage in the final review of the whole branch. None of them breaks the gate.
+Issue:  Review notes that the final review looked at and that stay as they are. app: only the four named packages are pinned, their dependencies float. 01-linux-bash: healthcheck.sh exits 1 when it cannot write the log, the body check accepts any body that reports status ok, a second setup.sh run does not restart a running service. 02-docker: an empty APP_VERSION build arg gives an empty version, main.py is mode 0755 in an image built from a Windows checkout, the image has no source label for GHCR, the compose file publishes port 8000 on all host interfaces. 03-ci-cd: the pip cache key ignores requirements.txt, ruff format also checks app/README.md. 04-terraform: the security group has a fixed name, the lock file holds the h1 checksum for linux_amd64 only. 05-ansible: the image tag check is skipped when someone runs with --tags host_only alone, verify.sh does not pin the dependencies of ansible-core and ansible-lint. 06-kubernetes: the namespace sets only the enforce label, the pods have no spread rule.
+Action: None planned. The reason for each one is in the review files under .tmp/sdd/. The owner may pick any of them up.
+Status: OPEN
+```
+
+```
+Issue:  systemd never ran the unit file that 01-linux-bash/setup.sh writes. The file passed systemd-analyze verify in a container, nothing more.
+Action: A VM or server with systemd is the first real check.
+Status: OPEN
+```
+
+```
+Issue:  This file is tracked and becomes public with the first push of main. It describes how the build was run and checked, next to readme files written in the first person.
+Action: Owner decides before the first push whether it stays tracked.
 Status: OPEN
 ```
 
@@ -77,42 +89,37 @@ Status: OPEN
 ```
 
 ```
-Issue:  Review notes deferred from step 6, all minor: the readme says the eight tagged tasks never ran although the engine install ran once in a probe container; the tag assert is skipped when someone runs with --tags host_only alone; three readme bullets are long; verify.sh pins ansible-core and ansible-lint but not their dependencies.
-Action: Triage in the final review of the whole branch. None of them breaks the gate.
-Status: OPEN
-```
-
-```
 Issue:  The Terraform code has never planned or applied anything. Not exercised: the my_ip validation rule (Terraform evaluates it at plan time), the AMI lookup, the default VPC lookup, the instance launch, both outputs.
 Action: The owner's first plan in a real AWS account is the first real check. This goes in the final report.
 Status: OPEN
 ```
 
-```
-Issue:  Review notes deferred from step 5, all minor: app_port has no validation, so app_port = 22 would open SSH to everyone; the security group has a fixed name instead of name_prefix; two readme bullets are long; the lock file holds the h1 checksum for linux_amd64 only.
-Action: Triage in the final review of the whole branch. The app_port note touches the spec item "SSH only from my_ip" and should get a validation rule.
-Status: OPEN
-```
-
-```
-Issue:  Review notes deferred from step 4, all minor: cancel-in-progress also cancels runs on main, the pip cache key ignores requirements.txt, no job has timeout-minutes, the image has no source label for GHCR, ruff format also checks app/README.md.
-Action: Triage in the final review of the whole branch. None of them breaks the gate.
-Status: OPEN
-```
-
-```
-Issue:  Review notes deferred from step 3, all minor: an empty APP_VERSION build arg makes /version return an empty string, main.py is mode 0755 in an image built from a Windows checkout, the compose file publishes port 8000 on all host interfaces, the ignore file is read by BuildKit only.
-Action: Triage in the final review of the whole branch. None of them breaks the gate.
-Status: OPEN
-```
-
-```
-Issue:  Review note deferred from step 1: only the four named packages are pinned. Their dependencies (starlette, pydantic and others) float, so a later install can differ from the tested one.
-Action: Possible later fix: a constraints file. Not done, the spec pins the named packages only.
-Status: OPEN
-```
-
 ## ACTIONS (dated log)
+
+### 2026-11-12 Final review and fix wave
+
+```
+Issue:  Review of the whole branch, one fix wave, one scoped second review. Start 09:50, end 11:04 (+0200).
+Action: The review read every tracked file against the owner's instructions. It found the build complete and the readmes honest, with two defects and a list of smaller points. Fixed: two readmes and one script comment said that no image has been pushed, which turns false on the first push; .gitattributes now gives every text file LF, because 05-ansible/verify.sh reads a line from README.md and a CRLF checkout on Windows broke it, and verify.sh now strips carriage returns too; the Deployment waits 5 seconds before a pod stops; app_port is validated and cannot be 22; runs on main are no longer cancelled and every job has a timeout; 22 Hebrew sentences and several English ones were corrected; the root README shows how to start the app and has a corrected diagram. Two builders worked in parallel on separate files. The second review found every point addressed and reran the gates. Commits 1e5c067, d62dc86, 677d29d, 070c0cc, ac91e08, 35d4234, 1fa3058.
+Status: DONE
+```
+
+Gate evidence, final code at 1fa3058, rerun between 10:44 and 10:53:
+
+```
+03  actionlint 1.7.12: no output, exit code 0
+03  build command with the final SHA: /version {"version":"1fa3058e7b5e7c3b01a2d3e74ee11a1d92121ea0"} [http 200]
+04  terraform 1.17.2: fmt -check no output; init -backend=false "Terraform has been successfully initialized!"; validate "Success! The configuration is valid."
+01, 05  shellcheck v0.11.0 on all five scripts: no output, exit code 0
+05  verify.sh in ubuntu:24.04: lint 0 failures, run 1 changed=5 failed=0, run 2 changed=0 failed=0, VERIFY PASSED, exit code 0
+05  CRLF proof on a copy whose README.md has CRLF: old line "VERIFY FAILED: inventory.ini has no entries", new line VERIFY PASSED
+06  kubeconform Valid: 4; four objects created; rollout complete; live spec holds {"preStop":{"sleep":{"seconds":5}}}; /health and /version [http 200]; deleted pod replaced; uid=10001; cluster deleted
+06  probe during a rolling restart, one run each: 4 of 750 requests failed without the wait, 0 of 766 with it. A second review run also saw 0 of 766.
+app pytest: 2 passed, 1 warning. uvicorn: /health {"status":"ok"}, /version {"version":"0.1.0"}
+01  verify.sh: VERIFY PASSED, exit code 0
+02  hadolint exit code 0; the kept image is healthy, runs as uid=10001, both endpoints [http 200]
+merge rehearsal in a scratch clone with main at a9cbb5a: git merge -X theirs worktree-step-1-app, no conflict, the tree equals the branch, all 45 files are checked out with LF
+```
 
 ### 2026-11-12 Step 7. 06-kubernetes/ and the root README
 
@@ -609,5 +616,29 @@ Status: REVISIT
 ```
 Issue:  The spec lists the Kubernetes objects and the parts of the root README, but not the names, the file layout or how the local cluster is used without touching the owner's own kubeconfig.
 Action: Plain manifests with number prefixes so one apply creates the namespace first. Namespace portfolio with the restricted Pod Security level enforced. Image portfolio-app:0.1.0 with pull policy IfNotPresent, imported into the cluster, never pulled. Service of type ClusterIP on port 80. The cluster is named portfolio. Its kubeconfig is written to 06-kubernetes/.kubeconfig, which git ignores, and every kubectl call names that file, so the default kubeconfig stays untouched. The root README keeps the owner's opening lines, shows only commands that were really run, and says that no image has been pushed yet. Decided alone during the build run.
+Status: REVISIT
+```
+
+### Fix wave choices
+
+```
+Issue:  The final review asked for changes that go beyond the letter of the spec in three places, and for one change of wording.
+Action: .gitattributes got a catch all rule, * text=auto eol=lf, on top of the five patterns the owner named, because a script in a Linux container reads README.md. The Deployment got a preStop wait of 5 seconds, which the spec does not list. app_port got a validation rule that forbids 22. The sentence "no image has been pushed yet" was replaced in two readmes by wording that stays true after the first push; this replaces the wording named in the entry Kubernetes and root readme choices. Cost if wrong: each is one small block to remove. Decided alone during the build run.
+Status: REVISIT
+```
+
+### main moved before the run began
+
+```
+Issue:  The stop rules name unexpected git state. main had moved by one commit of the owner (a9cbb5a, 03:03:49). That was before the build run began, but the run saw it only at 09:50.
+Action: Not treated as a stop. The commit is the owner's, it is older than the build instruction, and the files of the main checkout did not change during the run (checked by hash at 03:17, 05:40 and 09:50). The merge was rehearsed in scratch clones instead, see ISSUES. Cost if wrong: none for the repo, the owner still merges by hand. Decided alone during the build run.
+Status: REVISIT
+```
+
+### Parallel builders in the fix wave
+
+```
+Issue:  The working rule was one builder at a time. The final fix wave touched eleven files in six folders.
+Action: Two builders worked at the same time on file lists that do not overlap, and one review checked both afterwards. One Ansible test run failed once on a download while three containers installed collections at the same time; it passed when run alone, and three later runs passed. Decided alone during the build run.
 Status: REVISIT
 ```
