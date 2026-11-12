@@ -38,3 +38,11 @@ CLAUDE.md.bak*
 
 # Ruff cache
 .ruff_cache/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log

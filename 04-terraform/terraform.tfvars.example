@@ -1,0 +1,13 @@
+# Copy this file to terraform.tfvars and put in your own values.
+# Git ignores terraform.tfvars, so your address and key name stay local.
+
+aws_region    = "eu-central-1"
+instance_type = "t3.micro"
+
+# Your public IPv4 address, without a mask. 203.0.113.10 is a documentation address.
+my_ip = "203.0.113.10"
+
+# Name of an EC2 key pair that already exists in the region.
+key_name = "my-key-pair"
+
+app_port = 8000
