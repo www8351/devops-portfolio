@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate for this folder. Runs inside a throwaway Ubuntu 24.04 container as root, with the repo
+# Test for this folder. Runs inside a throwaway Ubuntu 24.04 container as root, with the repo
 # mounted read only. Installs Ansible in a venv, runs ansible-lint and a syntax check, checks
 # that a run without app_image_tag stops at the assert before it changes anything, then runs
 # the playbook twice against the container itself with the host_only tasks skipped. Checks what
@@ -25,7 +25,7 @@ base_packages="ca-certificates curl python3-debian python3-requests ufw"
 docker_sources="/etc/apt/sources.list.d/docker.sources"
 docker_key="/etc/apt/keyrings/docker.asc"
 doc_ip="203.0.113.10"
-# No image is pushed and the test never runs one, so any fixed value does for the tag.
+# The test never runs the image, so any fixed value does for the tag.
 test_image_tag="verify-test"
 tag_args=(-e "app_image_tag=${test_image_tag}")
 tag_fail_msg="Set app_image_tag, for example -e app_image_tag=<commit sha>"
@@ -53,7 +53,7 @@ usage() {
   cat <<EOF
 Usage: ${prog} [-h]
 
-Gate for the Ansible playbook: ansible-lint, syntax check, two runs against the
+Test for the Ansible playbook: ansible-lint, syntax check, two runs against the
 container itself with the host_only tasks skipped, and the inventory line from
 the README. It installs packages and changes the system, so run it only in a
 throwaway Ubuntu 24.04 container as root, with the repo mounted read only.
@@ -319,7 +319,7 @@ echo "checked: exactly the expected tasks carry host_only, and no other tag"
 # j. The line from the README that writes inventory.ini. A stand-in for terraform prints
 # a documentation address, because the real output needs an applied server.
 section "j. The inventory line from README.md"
-sed_lines="$(grep -F 'sed "s/APP_PUBLIC_IP/' README.md || true)"
+sed_lines="$(grep -F 'sed "s/APP_PUBLIC_IP/' README.md | tr -d '\r' || true)"
 expect_eq "number of inventory lines in README.md (English and Hebrew)" "2" "$(grep -c . <<<"$sed_lines")"
 sed_line="$(head -n 1 <<<"$sed_lines")"
 expect_eq "Hebrew copy of the inventory line" "$sed_line" "$(tail -n 1 <<<"$sed_lines")"
