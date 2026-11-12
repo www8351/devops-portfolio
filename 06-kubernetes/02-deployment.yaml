@@ -14,7 +14,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # A new pod has to be ready before an old one stops.
+      # A new pod has to be ready before an old one stops. This keeps at
+      # least two pods ready. It does not mean no request can fail.
       maxUnavailable: 0
       maxSurge: 1
   template:
@@ -62,6 +63,14 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
+          # Wait 5 seconds before the stop signal. For a moment after a pod
+          # starts to stop, the Service can still send it new connections.
+          # The sleep action is built into Kubernetes, so the image needs no
+          # sleep program.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           # Requests are what the scheduler reserves. Limits are the ceiling.
           resources:
             requests:
