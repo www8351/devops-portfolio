@@ -12,20 +12,12 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 4. 03-ci-cd/
-
-```
-Issue:  Step 4. Build .github/workflows/ci.yml with jobs lint (ruff), test (pytest), build (docker build). Push to GHCR only on main, tagged with the commit SHA, which is also passed as APP_VERSION. 03-ci-cd/README.md explains the pipeline, per the readme rules.
-Action: Gate: actionlint clean. Every command the jobs run also passes locally. The workflow has not run on GitHub. That fact goes in the final report, not in the readme. Started 2026-11-12 07:12 (+0200).
-Status: IN PROGRESS
-```
-
 ### Step 5. 04-terraform/
 
 ```
 Issue:  Step 5. Build: AWS provider pinned, one small EC2 instance with the instance type as a variable, a security group that opens SSH only from a my_ip variable plus the app port, key pair name as a variable, outputs for the public IP and the SSH command, terraform.tfvars.example. State files and tfvars ignored by git. Folder readme per the readme rules.
-Action: Gate: terraform fmt -check, init -backend=false and validate all pass. No plan. No apply.
-Status: OPEN
+Action: Gate: terraform fmt -check, init -backend=false and validate all pass. No plan. No apply. Started 2026-11-12 07:38 (+0200).
+Status: IN PROGRESS
 ```
 
 ### Step 6. 05-ansible/
@@ -77,6 +69,18 @@ Status: OPEN
 ```
 
 ```
+Issue:  The CI workflow has never run on GitHub. Not exercised anywhere: docker login to ghcr.io, docker push, action download, the pip cache, and the first package creation on GHCR.
+Action: The first push of main to GitHub is the first real run. The owner watches that run and the Packages page. This goes in the final report.
+Status: OPEN
+```
+
+```
+Issue:  Review notes deferred from step 4, all minor: cancel-in-progress also cancels runs on main, the pip cache key ignores requirements.txt, no job has timeout-minutes, the image has no source label for GHCR, ruff format also checks app/README.md.
+Action: Triage in the final review of the whole branch. None of them breaks the gate.
+Status: OPEN
+```
+
+```
 Issue:  Review notes deferred from step 3, all minor: an empty APP_VERSION build arg makes /version return an empty string, main.py is mode 0755 in an image built from a Windows checkout, the compose file publishes port 8000 on all host interfaces, the ignore file is read by BuildKit only.
 Action: Triage in the final review of the whole branch. None of them breaks the gate.
 Status: OPEN
@@ -89,6 +93,37 @@ Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 4. 03-ci-cd/
+
+```
+Issue:  Step 4. 03-ci-cd/. Start 07:12, end 07:36 (+0200).
+Action: Built .github/workflows/ci.yml (jobs lint, test, build; login and push to GHCR only on a push to main; the tag and APP_VERSION are both the commit SHA) and 03-ci-cd/README.md. The build stopped once because ruff 0.17.4 flagged the import order when run from the repo root; the lint job now runs from app/. A separate review approved the result, reran every gate and confirmed the pinned action commits. Versions: rhysd/actionlint:1.7.12, ruff 0.17.4, actions/checkout v7.0.1 (3d3c42e5aac5ba805825da76410c181273ba90b1), actions/setup-python v7.1.0 (6d4fd22b20465ccc0f7354476588e8df7c9ca0e0). Not exercised: docker login, docker push, the workflow itself on GitHub. Commits 238d6db, 053c406.
+Status: DONE
+```
+
+Gate evidence, code at 053c406:
+
+```
+$ docker run --rm --name pf-ctl-actionlint -v "${PWD}:/repo:ro" -w /repo rhysd/actionlint:1.7.12 -color
+(no output)                                                                  exit code 0
+$ docker run --rm -v "${PWD}:/repo:ro" python:3.14.10-slim-trixie sh -c "mkdir /work && cp -r --no-preserve=mode /repo/app /work/app && cd /work/app && pip install --no-cache-dir ruff==0.17.4 && ruff check . && ruff format --check ."
+All checks passed!
+3 files already formatted                                                    exit code 0
+$ docker run --rm -v "${PWD}:/repo:ro" python:3.14.10-slim-trixie sh -c "mkdir /work && cp -r --no-preserve=mode /repo/app /work/app && cd /work && python -m pip install -r app/requirements-dev.txt && cd app && pytest"
+2 passed, 1 warning in 0.20s                                                 exit code 0
+$ docker build -f 02-docker/Dockerfile --build-arg "APP_VERSION=053c406b5f1853406078d11a7849e6f1f218c1ad" -t "ghcr.io/www8351/devops-portfolio:053c406b5f1853406078d11a7849e6f1f218c1ad" .
+#12 naming to ghcr.io/www8351/devops-portfolio:053c406b5f1853406078d11a7849e6f1f218c1ad done      exit code 0
+$ curl -s http://127.0.0.1:8012/version      (container from that image)
+{"version":"053c406b5f1853406078d11a7849e6f1f218c1ad"} [http 200]
+$ image name line from the workflow, in bash, with GITHUB_REPOSITORY=Some-Owner/Some-Repo
+IMAGE=ghcr.io/some-owner/some-repo
+$ git ls-remote https://github.com/actions/checkout "refs/tags/v7*"
+3d3c42e5aac5ba805825da76410c181273ba90b1  refs/tags/v7.0.1
+$ git ls-remote https://github.com/actions/setup-python "refs/tags/v7*"
+6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  refs/tags/v7.1.0
+The test image tag was removed afterwards. Nothing was pushed.
+```
 
 ### 2026-11-12 Step 3. 02-docker/
 
@@ -411,5 +446,21 @@ Status: REVISIT
 ```
 Issue:  The spec asks for a .dockerignore in 02-docker, but the image needs files from app/, so the build context must be the repo root. Docker reads an ignore file only from the context root or, with BuildKit, from a file named after the Dockerfile.
 Action: Build context is the repo root. The ignore file is 02-docker/Dockerfile.dockerignore, an allow list for app/main.py and app/requirements.txt. Measured context: 448 bytes on the first build, 95 bytes on later builds. Cost if wrong: rename and move one file. Also decided: Debian slim base instead of a smaller one, health check with Python instead of installing curl, version arg placed last to keep the layer cache, compose adds a read only root filesystem, dropped capabilities and no-new-privileges. One line was added to .gitattributes to force LF for *.dockerignore. Decided alone during the build run.
+Status: REVISIT
+```
+
+### CI workflow choices
+
+```
+Issue:  ruff 0.17.4 sorts imports by default. Run from the repo root it treats main as a third party package and rejects the import order in the test file. The spec says lint with ruff and does not say from where.
+Action: The lint job runs ruff from app/, the folder pytest runs in. No ruff config file and no change to app code. Cost if wrong: add a one line ruff.toml. Also decided: ruff is pinned in the workflow and stays out of requirements-dev.txt, both actions are pinned to full commit SHAs, build, login and push are plain docker commands, the token goes through an environment variable and --password-stdin, DOCKER_BUILDKIT is set because the ignore file needs BuildKit. Decided alone during the build run.
+Status: REVISIT
+```
+
+### CI gate: login and push not run locally
+
+```
+Issue:  The gate says every command the jobs run also passes locally. docker login to ghcr.io and docker push need a GitHub token and would publish an image, which the limits forbid.
+Action: The gate covers the lint, test and build commands. Login and push are listed as not exercised here and in the final report. Cost if wrong: none locally, the first run on GitHub shows whether they work. Decided alone during the build run.
 Status: REVISIT
 ```
