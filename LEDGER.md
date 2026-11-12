@@ -12,20 +12,12 @@ Status: [OPEN | IN PROGRESS | DONE | BLOCKED | FINAL]
 
 Ordered queue for the build run, steps 0 to 7. Work one step at a time, in order. Resume from the first step that is not DONE. A step is DONE only when its gate passes with real command output. A step that passes moves to ACTIONS with start time, end time and the gate evidence.
 
-### Step 5. 04-terraform/
-
-```
-Issue:  Step 5. Build: AWS provider pinned, one small EC2 instance with the instance type as a variable, a security group that opens SSH only from a my_ip variable plus the app port, key pair name as a variable, outputs for the public IP and the SSH command, terraform.tfvars.example. State files and tfvars ignored by git. Folder readme per the readme rules.
-Action: Gate: terraform fmt -check, init -backend=false and validate all pass. No plan. No apply. Started 2026-11-12 07:38 (+0200).
-Status: IN PROGRESS
-```
-
 ### Step 6. 05-ansible/
 
 ```
 Issue:  Step 6. Build one playbook with three roles: base (packages, service user, firewall), docker (engine install), app (run the image as a container, wait for /health). An inventory example that takes the IP from the Terraform output. Folder readme per the readme rules.
-Action: Gate: ansible-lint clean, syntax check passes. Run the playbook against a local Ubuntu container. Tasks that cannot run inside a container (systemd, firewall, Docker engine) carry a tag and are skipped there. A second run reports zero changes. The skipped tasks are listed in the final report as lint verified only.
-Status: OPEN
+Action: Gate: ansible-lint clean, syntax check passes. Run the playbook against a local Ubuntu container. Tasks that cannot run inside a container (systemd, firewall, Docker engine) carry a tag and are skipped there. A second run reports zero changes. The skipped tasks are listed in the final report as lint verified only. Started 2026-11-12 07:55 (+0200).
+Status: IN PROGRESS
 ```
 
 ### Step 7. 06-kubernetes/ and the final root README
@@ -75,6 +67,18 @@ Status: OPEN
 ```
 
 ```
+Issue:  The Terraform code has never planned or applied anything. Not exercised: the my_ip validation rule (Terraform evaluates it at plan time), the AMI lookup, the default VPC lookup, the instance launch, both outputs.
+Action: The owner's first plan in a real AWS account is the first real check. This goes in the final report.
+Status: OPEN
+```
+
+```
+Issue:  Review notes deferred from step 5, all minor: app_port has no validation, so app_port = 22 would open SSH to everyone; the security group has a fixed name instead of name_prefix; two readme bullets are long; the lock file holds the h1 checksum for linux_amd64 only.
+Action: Triage in the final review of the whole branch. The app_port note touches the spec item "SSH only from my_ip" and should get a validation rule.
+Status: OPEN
+```
+
+```
 Issue:  Review notes deferred from step 4, all minor: cancel-in-progress also cancels runs on main, the pip cache key ignores requirements.txt, no job has timeout-minutes, the image has no source label for GHCR, ruff format also checks app/README.md.
 Action: Triage in the final review of the whole branch. None of them breaks the gate.
 Status: OPEN
@@ -93,6 +97,31 @@ Status: OPEN
 ```
 
 ## ACTIONS (dated log)
+
+### 2026-11-12 Step 5. 04-terraform/
+
+```
+Issue:  Step 5. 04-terraform/. Start 07:38, end 07:53 (+0200).
+Action: Built versions.tf, variables.tf, main.tf, outputs.tf, terraform.tfvars.example, the lock file and the folder readme: one EC2 instance, a security group with SSH from my_ip/32 only plus the app port, outputs public_ip and ssh_command. A separate review approved it, reran the gate and showed on a scratch copy that validate rejects a wrong reference and an unknown argument. Versions: hashicorp/terraform:1.17.2, AWS provider 6.73.0 pinned exactly. Static checks only, by rule: no plan, no apply, no AWS access. Commits e7a50e8, 2902895.
+Status: DONE
+```
+
+Gate evidence, code at 2902895:
+
+```
+$ docker run --rm -v "${PWD}/04-terraform:/tf" -w /tf hashicorp/terraform:1.17.2 fmt -check -recursive -diff
+(no output)                                                                  exit code 0
+$ docker run --rm -v "${PWD}/04-terraform:/tf" -w /tf hashicorp/terraform:1.17.2 init -backend=false -input=false
+- Reusing version 6.73.0 of hashicorp/aws from the dependency lock file
+Terraform has been successfully initialized!                                 exit code 0
+$ docker run --rm -v "${PWD}/04-terraform:/tf" -w /tf hashicorp/terraform:1.17.2 validate
+Success! The configuration is valid.                                         exit code 0
+$ lock file version "6.73.0" equals the pin "= 6.73.0" in versions.tf
+$ git check-ignore -v 04-terraform/terraform.tfvars 04-terraform/terraform.tfstate 04-terraform/terraform.tfstate.backup 04-terraform/.terraform/x
+.gitignore:46:*.tfvars      .gitignore:44:*.tfstate      .gitignore:45:*.tfstate.*      .gitignore:43:.terraform/
+$ git ls-files 04-terraform
+.terraform.lock.hcl and terraform.tfvars.example are tracked.
+```
 
 ### 2026-11-12 Step 4. 03-ci-cd/
 
@@ -462,5 +491,13 @@ Status: REVISIT
 ```
 Issue:  The gate says every command the jobs run also passes locally. docker login to ghcr.io and docker push need a GitHub token and would publish an image, which the limits forbid.
 Action: The gate covers the lint, test and build commands. Login and push are listed as not exercised here and in the final report. Cost if wrong: none locally, the first run on GitHub shows whether they work. Decided alone during the build run.
+Status: REVISIT
+```
+
+### Terraform choices
+
+```
+Issue:  The spec lists what the Terraform code must contain but not the region, the image, the network or the tool versions.
+Action: Region default eu-central-1, instance type default t3.micro, newest Ubuntu 24.04 amd64 image from Canonical, the default VPC, separate rule resources, all outbound traffic allowed, IMDSv2 required, encrypted gp3 root volume. my_ip is a bare IPv4 address and the code adds /32. Terraform range >= 1.9, < 2.0, checked with 1.17.2. The lock file is tracked and holds checksums for linux_amd64 only. One line was added to .gitattributes to force LF for *.hcl. Decided alone during the build run.
 Status: REVISIT
 ```
