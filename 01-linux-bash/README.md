@@ -13,7 +13,7 @@ Three Bash scripts that run and watch the app on a plain Linux host, without con
 
 * The app runs as `appuser`, a system account with no login shell and no home dir. The code in /opt/portfolio-app belongs to root, so the app cannot change its own code. The account owns only the log folder.
 * The venv lives inside the install dir, so the app's packages stay away from the system Python.
-* The unit file tells systemd to start the app at boot and to restart it if it crashes. I added a little hardening: NoNewPrivileges, PrivateTmp, ProtectHome and ProtectSystem=full. I kept it modest on purpose.
+* The unit file tells systemd to start the app at boot and to restart it if it crashes. I added a little hardening: NoNewPrivileges, PrivateTmp, ProtectHome and ProtectSystem=full. I stopped there, because systemd never ran this unit and stricter settings need a real host to test.
 * The unit file starts uvicorn with `--host 0.0.0.0`. The app listens on all network interfaces on the chosen port, so other machines can reach it. A firewall or a cloud security group decides who gets in.
 * `setup.sh` is safe to run twice. It skips the account and the venv when they already exist and writes the files again.
 * `healthcheck.sh` is made for cron. It is silent when the app is healthy and prints one line on stderr when it is not, so cron only reports real problems. The exit code says what happened: 0 healthy, 1 not healthy or log not writable, 2 bad option. A failed curl call does not stop the script before the FAIL line is written.
@@ -94,10 +94,10 @@ Each script prints its options with -h.
 ## למה זה בנוי ככה
 
 * האפליקציה רצה תחת `appuser`, חשבון מערכת בלי מעטפת התחברות ובלי תיקיית בית. הקוד ב-`/opt/portfolio-app` שייך ל-`root`, כך שהאפליקציה לא יכולה לשנות את הקוד של עצמה. לחשבון שייכת רק תיקיית הלוגים.
-* סביבת ה-`venv` נמצאת בתוך תיקיית ההתקנה, כך שהחבילות של האפליקציה נשארות רחוקות מה-`Python` של המערכת.
-* קובץ ה-`unit` אומר ל-`systemd` להפעיל את האפליקציה בעליית המערכת ולהפעיל אותה מחדש אם היא קורסת. הוספתי מעט הקשחה: `NoNewPrivileges`, `PrivateTmp`, `ProtectHome` ו-`ProtectSystem=full`. שמרתי על זה צנוע בכוונה.
+* סביבת ה-`venv` נמצאת בתוך תיקיית ההתקנה, כך שהחבילות של האפליקציה לא מתערבבות עם ה-`Python` של המערכת.
+* קובץ ה-`unit` אומר ל-`systemd` להפעיל את האפליקציה בעליית המערכת ולהפעיל אותה מחדש אם היא קורסת. הוספתי מעט הקשחה: `NoNewPrivileges`, `PrivateTmp`, `ProtectHome` ו-`ProtectSystem=full`. לא הוספתי יותר, כי `systemd` אף פעם לא הריץ את קובץ ה-`unit` הזה, ואת ההגדרות המחמירות יותר צריך לבדוק על שרת אמיתי.
 * קובץ ה-`unit` מפעיל את `uvicorn` עם `--host 0.0.0.0`. האפליקציה מאזינה בכל ממשקי הרשת על הפורט שנבחר, כך שמחשבים אחרים יכולים להגיע אליה. חומת אש או `security group` בענן קובעים מי נכנס.
-* אפשר להריץ את `setup.sh` פעמיים. הוא מדלג על החשבון ועל ה-`venv` כשהם כבר קיימים, וכותב את הקבצים מחדש.
+* בטוח להריץ את `setup.sh` פעמיים. הוא מדלג על החשבון ועל ה-`venv` כשהם כבר קיימים, וכותב את הקבצים מחדש.
 * הסקריפט `healthcheck.sh` נבנה בשביל `cron`. הוא שקט כשהאפליקציה תקינה ומדפיס שורה אחת ל-`stderr` כשהיא לא, כך ש-`cron` מדווח רק על בעיות אמיתיות. קוד היציאה מספר מה קרה: `0` תקין, `1` לא תקין או שאי אפשר לכתוב ללוג, `2` אפשרות שגויה. קריאת `curl` שנכשלה לא עוצרת את הסקריפט לפני ששורת ה-`FAIL` נכתבת.
 * הלוג הוא טקסט פשוט, שורה אחת לכל בדיקה. מספיקים `grep` ו-`awk` כדי לקרוא אותו, והסקריפט `log-report.sh` הוא כמה שורות של `awk`.
 * כל ארבעת הסקריפטים רצים עם `set -euo pipefail`, מדפיסים הודעת שימוש עם `-h`, ויוצאים עם `2` על אפשרות שגויה.
@@ -157,5 +157,5 @@ sudo -u appuser /usr/local/bin/healthcheck.sh
 * בהרצה שנייה הסקריפט `setup.sh` מעתיק את הקוד החדש אבל לא מפעיל מחדש שירות שכבר רץ. היום צריך בשביל זה `sudo systemctl restart portfolio-app`. כדאי להפעיל אותו מחדש כשהקבצים משתנים.
 * סביבת ה-`venv` נבנית מה-`python3` של השרת. ב-`Ubuntu 24.04` זו גרסה `3.12`, ושאר הריפו עובד עם `3.14`. כדאי לנעול גם את גרסת ה-`Python` על השרת.
 * רק `fastapi` ו-`uvicorn` נעולים. התלויות שלהם לא נעולות, כך ששתי התקנות יכולות להיות שונות. קובץ נעילה יפתור את זה.
-* לוג הבדיקות גדל בלי סוף. כלל של `logrotate` ישמור אותו קטן.
+* לוג הבדיקות גדל בלי סוף. כלל של `logrotate` ימנע ממנו לגדול.
 * כדאי להריץ את קובץ ה-`unit` על מכונה וירטואלית אמיתית עם `systemd`, ולא רק לבדוק את הקובץ.
