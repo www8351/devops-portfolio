@@ -29,8 +29,8 @@ Status: OPEN
 ```
 
 ```
-Issue:  The main checkout holds an untracked .gitignore. Once the branch tracks .gitignore, git merge refuses to overwrite the untracked copy.
-Action: The owner moves or deletes the untracked copy in the main checkout before merging. The exact commands go in the final report.
+Issue:  main is not where this branch started. The owner committed .gitignore on main at 2026-11-12 03:03:49 (a9cbb5a, Create .gitignore), after this branch was cut from e9572ae and before the build run began. The build run noticed it only at 09:50, during a merge rehearsal. So the merge is not a fast forward, and .gitignore is added on both sides. The branch file is main's file plus 23 appended lines.
+Action: Tested twice in a scratch clone with main at a9cbb5a. "git merge worktree-step-1-app" stops with one conflict, in .gitignore, and "git checkout --theirs .gitignore", "git add .gitignore", "git commit --no-edit" finish it. "git merge -X theirs worktree-step-1-app" does the same in one command with no conflict. Both give exactly the branch tree. The owner merges. The commands go in the final report.
 Status: OPEN
 ```
 
