@@ -26,12 +26,12 @@ flowchart LR
     code["App code"] --> ci["CI: lint, test, build"]
     ci --> image["Image"]
     image --> registry["Registry"]
-    registry --> terraform["Terraform creates a server"]
-    terraform --> ansible["Ansible runs the container"]
+    terraform["Terraform creates a server"] --> ansible["Ansible runs the container"]
+    registry --> ansible
     registry --> k8s["Kubernetes runs a Deployment"]
 ```
 
-No image has been pushed to a registry yet. For the Kubernetes check I imported the image from the local Docker image store.
+In every check here the app image was built on my machine. For the Kubernetes check I imported it from the local Docker image store.
 
 ## How to run
 
@@ -39,16 +39,30 @@ All commands run from the repo root. I ran them in PowerShell on Windows 11 with
 
 ### app/
 
-The tests, as the CI test job runs them. These commands come from `03-ci-cd/README.md`:
+I ran these commands in a venv. The first line creates it, and the next three run the tests the way the CI test job does. The paths are written for PowerShell on Windows.
 
 ```
-python -m pip install -r app/requirements-dev.txt
+python -m venv .venv
+.venv\Scripts\python -m pip install -r app/requirements-dev.txt
 cd app
-pytest
-cd ..
+..\.venv\Scripts\python -m pytest
 ```
 
 pytest printed `2 passed, 1 warning`.
+
+Then start the app, still from `app/`. uvicorn runs until it is stopped, so it needs its own terminal. It uses port 8000 on the machine, the same host port as in the `02-docker/` section.
+
+```
+..\.venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+In a second terminal:
+
+```
+curl -s http://127.0.0.1:8000/health
+```
+
+It printed `{"status":"ok"}`. After I stopped uvicorn, nothing listened on port 8000 any more. Then `cd ..` goes back to the repo root.
 
 ### 01-linux-bash/
 
@@ -57,7 +71,7 @@ docker run --rm --name pf-linux-bash -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 
 docker run --rm --name pf-linux-bash-unit -e DEBIAN_FRONTEND=noninteractive -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 python3-venv systemd >/dev/null && bash 01-linux-bash/setup.sh >/dev/null && systemd-analyze verify /etc/systemd/system/portfolio-app.service && echo unit file verified"
 ```
 
-The first command runs all four scripts in an Ubuntu 24.04 container. It ended with `VERIFY PASSED`. The second command checks the systemd unit file, and it printed `unit file verified`. The folder readme also shows the commands for a real Ubuntu host and marks them as not run.
+The first command runs `verify.sh`, which runs the other three scripts in an Ubuntu 24.04 container. It ended with `VERIFY PASSED`. The second command checks the systemd unit file, and it printed `unit file verified`. The folder readme also shows the commands for a real Ubuntu host and marks them as not run.
 
 ### 02-docker/
 
@@ -78,7 +92,7 @@ docker run --rm --name pf-ci-lint -v "${PWD}:/repo:ro" python:3.14.10-slim-trixi
 docker run --rm --name pf-ci-test -v "${PWD}:/repo:ro" python:3.14.10-slim-trixie sh -c "mkdir /work && cp -r --no-preserve=mode /repo/app /work/app && cd /work && python -m pip install -r app/requirements-dev.txt && cd app && pytest"
 ```
 
-These commands check the workflow file and run the lint and test jobs in clean Linux containers. The login and push steps need the token that only the workflow gets, so they are not among these commands, as the folder readme explains.
+These commands check the workflow file and run the lint and test jobs in clean Linux containers. The login and push steps need the token that only the workflow gets, so they are not among these commands.
 
 ### 04-terraform/
 
@@ -127,7 +141,7 @@ These commands create a local k3d cluster, import the image from the local Docke
 | [`02-docker/`](02-docker/) | קובץ `Dockerfile` עם שני שלבים וקובץ `compose`, שבונים ומריצים את האימג' של האפליקציה. |
 | [`03-ci-cd/`](03-ci-cd/) | ההסבר ל-`workflow` של `GitHub Actions` שב-`.github/workflows/ci.yml`, שבודק את הקוד, מריץ את הבדיקות, בונה את האימג' ודוחף אותו. |
 | [`04-terraform/`](04-terraform/) | קוד `Terraform` לשרת `EC2` אחד ב-`AWS` ול-`security group` שלו. |
-| [`05-ansible/`](05-ansible/) | פלייבוק של `Ansible` שמכין שרת `Ubuntu` ומריץ עליו את האימג'. |
+| [`05-ansible/`](05-ansible/) | קובץ `playbook` של `Ansible` שמכין שרת `Ubuntu` ומריץ עליו את האימג'. |
 | [`06-kubernetes/`](06-kubernetes/) | קובצי `manifest` של `Kubernetes` שמריצים את האימג' בתור `Deployment` עם שני `pods` מאחורי `Service`. |
 
 ## מהקוד לקונטיינר שרץ
@@ -139,12 +153,12 @@ flowchart LR
     code["App code"] --> ci["CI: lint, test, build"]
     ci --> image["Image"]
     image --> registry["Registry"]
-    registry --> terraform["Terraform creates a server"]
-    terraform --> ansible["Ansible runs the container"]
+    terraform["Terraform creates a server"] --> ansible["Ansible runs the container"]
+    registry --> ansible
     registry --> k8s["Kubernetes runs a Deployment"]
 ```
 
-עדיין לא נדחף אף אימג' ל-`registry`. בבדיקה של `Kubernetes` ייבאתי את האימג' ממאגר האימג'ים המקומי של `Docker`.
+בכל הבדיקות כאן האימג' של האפליקציה נבנה במחשב שלי. בבדיקה של `Kubernetes` ייבאתי אותו ממאגר האימג'ים המקומי של `Docker`.
 
 ## איך מריצים
 
@@ -152,16 +166,30 @@ flowchart LR
 
 ### התיקייה `app/`
 
-אלה הבדיקות, כמו שמשימת ה-`test` של ה-`CI` מריצה אותן. הפקודות האלה לקוחות מ-`03-ci-cd/README.md`:
+הרצתי את הפקודות האלה בתוך `venv`. השורה הראשונה יוצרת אותו, ושלוש השורות הבאות מריצות את הבדיקות כמו שמשימת ה-`test` של ה-`CI` מריצה אותן. הנתיבים כתובים בשביל `PowerShell` על `Windows`.
 
 ```
-python -m pip install -r app/requirements-dev.txt
+python -m venv .venv
+.venv\Scripts\python -m pip install -r app/requirements-dev.txt
 cd app
-pytest
-cd ..
+..\.venv\Scripts\python -m pytest
 ```
 
 הכלי `pytest` הדפיס `2 passed, 1 warning`.
+
+אחר כך מפעילים את האפליקציה, עדיין מתוך `app/`. הכלי `uvicorn` רץ עד שעוצרים אותו, ולכן הוא צריך טרמינל משלו. הוא תופס את פורט `8000` של המחשב, אותו פורט שגם החלק של `02-docker/` תופס.
+
+```
+..\.venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+בטרמינל שני:
+
+```
+curl -s http://127.0.0.1:8000/health
+```
+
+הפקודה הדפיסה `{"status":"ok"}`. אחרי שעצרתי את `uvicorn`, אף תהליך כבר לא האזין על פורט `8000`. בסוף הפקודה `cd ..` מחזירה לשורש הריפו.
 
 ### התיקייה `01-linux-bash/`
 
@@ -170,7 +198,7 @@ docker run --rm --name pf-linux-bash -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 
 docker run --rm --name pf-linux-bash-unit -e DEBIAN_FRONTEND=noninteractive -v "${PWD}:/repo:ro" -w /repo ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 python3-venv systemd >/dev/null && bash 01-linux-bash/setup.sh >/dev/null && systemd-analyze verify /etc/systemd/system/portfolio-app.service && echo unit file verified"
 ```
 
-הפקודה הראשונה מריצה את כל ארבעת הסקריפטים בקונטיינר `Ubuntu 24.04`. היא הסתיימה ב-`VERIFY PASSED`. הפקודה השנייה בודקת את קובץ ה-`unit` של `systemd`, והיא הדפיסה `unit file verified`. קובץ ה-`README` של התיקייה מציג גם את הפקודות לשרת `Ubuntu` אמיתי, ומסמן שהן לא הורצו.
+הפקודה הראשונה מריצה את `verify.sh`, והוא מריץ את שלושת הסקריפטים האחרים בקונטיינר `Ubuntu 24.04`. היא הסתיימה ב-`VERIFY PASSED`. הפקודה השנייה בודקת את קובץ ה-`unit` של `systemd`, והיא הדפיסה `unit file verified`. קובץ ה-`README` של התיקייה מציג גם את הפקודות לשרת `Ubuntu` אמיתי, ומסמן שהן לא הורצו.
 
 ### התיקייה `02-docker/`
 
@@ -191,7 +219,7 @@ docker run --rm --name pf-ci-lint -v "${PWD}:/repo:ro" python:3.14.10-slim-trixi
 docker run --rm --name pf-ci-test -v "${PWD}:/repo:ro" python:3.14.10-slim-trixie sh -c "mkdir /work && cp -r --no-preserve=mode /repo/app /work/app && cd /work && python -m pip install -r app/requirements-dev.txt && cd app && pytest"
 ```
 
-הפקודות האלה בודקות את קובץ ה-`workflow` ומריצות את משימות ה-`lint` וה-`test` בקונטיינרים נקיים של `Linux`. שלבי ההתחברות והדחיפה צריכים את ה-`token` שרק ה-`workflow` מקבל, ולכן הם לא בין הפקודות האלה, כמו שקובץ ה-`README` של התיקייה מסביר.
+הפקודות האלה בודקות את קובץ ה-`workflow` ומריצות את משימות ה-`lint` וה-`test` בקונטיינרים נקיים של `Linux`. שלבי ההתחברות והדחיפה צריכים את ה-`token` שרק ה-`workflow` מקבל, ולכן הם לא בין הפקודות האלה.
 
 ### התיקייה `04-terraform/`
 
